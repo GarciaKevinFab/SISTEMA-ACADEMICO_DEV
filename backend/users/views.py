@@ -72,6 +72,8 @@ def _ensure_student_for_user(user: User):
         email=email,
     )
     return st
+
+
 # ===================== PAGINACIÓN SIMPLE =====================
 def _int_param(request, key, default):
     raw = request.query_params.get(key, None)
@@ -114,6 +116,7 @@ def _paginate_queryset(request, qs, default_page_size=10, max_page_size=100):
         "items": items,
     }
 
+
 # ---------- AUTH ----------
 @api_view(["GET"])
 @permission_classes([permissions.IsAuthenticated])
@@ -154,6 +157,7 @@ def auth_me(request):
         "permissions": perm_codes,
         "student_id": student_id,
     })
+
 
 # ✅ ---------- USERS (COLLECTION) ----------
 @api_view(["GET", "POST"])
@@ -241,6 +245,7 @@ def users_search(request):
         "previous": pag["previous"],
         "results": ser.data,
     })
+
 
 # ✅ ---------- USERS (DETAIL) ----------
 @api_view(["PUT", "PATCH", "DELETE"])

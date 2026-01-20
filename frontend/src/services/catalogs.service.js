@@ -80,7 +80,6 @@ export const Imports = {
         }
     },
 
-
     status: (jobId) => getData(api.get(`/catalogs/imports/status/${jobId}`)),
 };
 

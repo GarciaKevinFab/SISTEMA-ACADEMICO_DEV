@@ -20,7 +20,7 @@ from django.db.utils import OperationalError
 from django.http import Http404, HttpResponse, FileResponse
 from django.db.models import Q
 from django.contrib.auth import get_user_model
-from django.utils.crypto import get_random_string  # ✅ FIX: faltaba
+from django.utils.crypto import get_random_string
 
 from openpyxl import Workbook, load_workbook
 
@@ -181,35 +181,26 @@ STUDENT_HEADER_ALIASES = {
     "region": "region",
     "provincia": "provincia",
     "distrito": "distrito",
-
     "codigo modular": "codigo_modular",
     "codigo_modular": "codigo_modular",
     "nombre de la institucion": "nombre_institucion",
     "nombre institucion": "nombre_institucion",
-
     "gestion": "gestion",
     "tipo": "tipo",
-
     "programa / carrera": "programa_carrera",
     "programa carrera": "programa_carrera",
-
     "ciclo": "ciclo",
     "turno": "turno",
     "seccion": "seccion",
     "periodo": "periodo",
-
     "apellido paterno": "apellido_paterno",
     "apellido materno": "apellido_materno",
     "nombres": "nombres",
-
     "fecha nac": "fecha_nac",
     "fecha nac.": "fecha_nac",
-
     "sexo": "sexo",
-
     "num documento": "num_documento",
     "num. documento": "num_documento",
-
     "lengua": "lengua",
     "discapacidad": "discapacidad",
     "tipo de discapacidad": "tipo_discapacidad",
@@ -312,8 +303,6 @@ def _normalize_semester_value(v) -> str:
     s = unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode("ascii")
     return s.lower()
 
-
-
 def _is_semester_label(v) -> Optional[int]:
     key = _normalize_semester_value(v)
     if not key:
@@ -334,7 +323,6 @@ def _is_semester_label(v) -> Optional[int]:
         return sem_map.get(tail)
 
     return None
-
 
 def _read_study_plan_xlsx(file):
     wb = load_workbook(file, data_only=True, read_only=True, keep_links=False)
@@ -380,7 +368,6 @@ def _read_study_plan_xlsx(file):
                     if ("hora" in h) or ("horas" in h) or (h == "nota"):
                         hours_col = j
                         break
-
 
                 header_found = course_col is not None and cred_col is not None
                 empty_streak = 0
@@ -594,18 +581,35 @@ class TeachersViewSet(viewsets.ModelViewSet):
     def list(self, request, *args, **kwargs):
         return list_items(self.serializer_class, self.get_queryset())
 
-# ─────────────────────────────────────────────────────────────
-# Ubigeo (Perú real desde JSON) + fallback demo
-# ─────────────────────────────────────────────────────────────
-#
-# Espera un JSON en: backend/catalogs/data/ubigeo_pe.json
-# Estructura recomendada:
-# {
-#   "15": {"name":"LIMA", "provinces":{
-#      "1508":{"name":"HUAURA","districts":{"150801":"HUACHO","150802":"HUALMAY"}}
-#   }}
-# }
-#
+    def create(self, request, *args, **kwargs):
+        teacher_role, _ = Role.objects.get_or_create(name="TEACHER")
+        ser = self.get_serializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        # ✅ Crear User automáticamente
+        data = ser.validated_data
+        username_base = data.get("document", "") or data.get("full_name", "").split()[0] or "teacher"
+        username = username_base
+        k = 1
+        while User.objects.filter(username=username).exists():
+            k += 1
+            username = f"{username_base}-{k}"
+
+        temp_password = get_random_string(12)
+        user = User.objects.create_user(username=username, password=temp_password, email=data.get("email", ""), full_name=data.get("full_name", ""))
+        UserRole.objects.get_or_create(user=user, role=teacher_role)
+
+        # Crear Teacher
+        teacher = ser.save(user=user)
+
+        # ✅ Asignar cursos (asumiendo Teacher.courses ManyToManyField(Course))
+        courses = data.get("courses", [])
+        if courses and hasattr(teacher, "courses"):
+            teacher.courses.set(courses)
+
+        out = self.get_serializer(teacher).data
+        out["username"] = user.username
+        out["temporary_password"] = temp_password
+        return Response(out, status=201)
 
 UBIGEO_DEMO = {
     "15": {  # Lima
@@ -657,9 +661,6 @@ def _load_ubigeo_pe() -> dict:
 
     print(f"[UBIGEO] FALLBACK DEMO. BASE_DIR={settings.BASE_DIR} CWD={os.getcwd()} ERR={last_err}")
     _UBIGEO_CACHE = UBIGEO_DEMO
-    return _UBIGEO_CACHE
-    
-    EO_DEMO
     return _UBIGEO_CACHE
 
 def _ub_name(x) -> str:
@@ -990,7 +991,6 @@ def imports_start(request, type: str):
                     pl.semesters = int(mx)
                     pl.save(update_fields=["semesters"])
 
-
                 imported += 1
 
             if AdmissionCareer is not None:
@@ -1299,7 +1299,8 @@ def imports_start(request, type: str):
                     code = str(row.get("code", "")).strip()
                     name = str(row.get("name", "")).strip()
                     credits = _to_int(row.get("credits"), None)
-                    hours = _to_int(row.get("hours"), None)
+                    hours = _to_int(row.get("hours", None))
+
                     if not code or not name:
                         errors.append(f"Fila {r}: code y name requeridos")
                         continue
@@ -1313,8 +1314,8 @@ def imports_start(request, type: str):
                         course.credits = max(0, int(credits))
                     course.save()
 
-                    plan_id = _to_int(row.get("plan_id"), None)
-                    semester = _to_int(row.get("semester"), None)
+                    plan_id = _to_int(row.get("plan_id", None))
+                    semester = _to_int(row.get("semester", None))
                     ctype = str(row.get("type", "")).strip().upper()
 
                     if plan_id and semester:

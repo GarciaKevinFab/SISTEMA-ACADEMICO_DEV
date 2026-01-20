@@ -31,7 +31,7 @@ from .views import (
     ProcessesCreateView, ProcessesListView, ProcessesMineView, ProcessDetailView,
     ProcessStatusView, ProcessNotifyView, ProcessFilesView, ProcessFileDeleteView,
 
-    AcademicCareersListView
+    AcademicCareersListView,CoursesListView,
 )
 
 router = DefaultRouter(trailing_slash=False)
@@ -52,6 +52,7 @@ urlpatterns = [
     path("", include(router.urls)),
 
     # Courses
+    path("courses", CoursesListView.as_view()),
     path("courses/available", AvailableCoursesView.as_view()),
 
     # Enrollment

@@ -3,6 +3,7 @@ from django.contrib.auth import get_user_model
 from django.db import transaction, IntegrityError
 from rest_framework import serializers
 from catalogs.models import Campus, Classroom
+from academic.models import Course
 
 from .models import (
     Period, Campus, Classroom, Teacher,
@@ -47,22 +48,14 @@ class ClassroomSerializer(serializers.ModelSerializer):
 
 # ------------------ Teacher ------------------
 class TeacherSerializer(serializers.ModelSerializer):
-    """
-    Frontend envía:
-    { document, full_name, email, phone, specialization }
-
-    ✅ Arreglos:
-    - full_name ahora ES el campo del modelo (se guarda en Teacher.full_name).
-    - NO usamos first_name/last_name (tu User no los tiene).
-    - display_name: Teacher.full_name > User.full_name/name > username/email.
-    """
     display_name = serializers.SerializerMethodField(read_only=True)
 
-    document = serializers.CharField(required=False, allow_blank=True)
-    full_name = serializers.CharField(required=False, allow_blank=True)   # ✅ YA NO write_only
-    email = serializers.EmailField(required=False, allow_blank=True)
-    phone = serializers.CharField(required=False, allow_blank=True)
-    specialization = serializers.CharField(required=False, allow_blank=True)
+    # ✅ NUEVO
+    courses = serializers.PrimaryKeyRelatedField(
+        many=True,
+        queryset=Course.objects.all(),
+        required=False
+    )
 
     class Meta:
         model = Teacher
@@ -75,6 +68,7 @@ class TeacherSerializer(serializers.ModelSerializer):
             "email",
             "phone",
             "specialization",
+            "courses",  # ✅ NUEVO
         ]
         read_only_fields = ["id", "user", "display_name"]
 
@@ -159,49 +153,64 @@ class TeacherSerializer(serializers.ModelSerializer):
         return (obj.document or "").strip() or "Docente"
 
     # ---------- create / update ----------
-    @transaction.atomic
-    def create(self, validated_data):
-        full_name = (validated_data.get("full_name", "") or "").strip()
-        email = (validated_data.get("email", "") or "").strip().lower()
-        document = (validated_data.get("document", "") or "").strip()
+@transaction.atomic
+def create(self, validated_data):
+    # ✅ sacar M2M antes del create
+    courses = validated_data.pop("courses", [])
 
-        # crea Teacher primero (porque tu modelo ya guarda full_name)
-        teacher = Teacher.objects.create(**validated_data)
+    full_name = (validated_data.get("full_name", "") or "").strip()
+    email = (validated_data.get("email", "") or "").strip().lower()
+    document = (validated_data.get("document", "") or "").strip()
 
-        # si quieres user automático, lo hacemos SOLO si hay email o documento
-        username_value = email or document
-        if username_value and teacher.user is None:
-            user = self._get_or_create_user(username_value, email, full_name)
-            teacher.user = user
-            teacher.save(update_fields=["user"])
+    # ✅ crear Teacher sin cursos
+    teacher = Teacher.objects.create(**validated_data)
 
-        return teacher
+    # ✅ asignar cursos (si existe el campo)
+    if hasattr(teacher, "courses"):
+        teacher.courses.set(courses or [])
 
-    @transaction.atomic
-    def update(self, instance, validated_data):
-        # actualiza Teacher
-        for k, v in validated_data.items():
-            setattr(instance, k, v)
-        instance.save()
+    # ✅ crear/adjuntar user si aplica
+    username_value = email or document
+    if username_value and teacher.user is None:
+        user = self._get_or_create_user(username_value, email, full_name)
+        teacher.user = user
+        teacher.save(update_fields=["user"])
 
-        # si tiene user, actualiza email/full_name si el user tiene esos campos
-        u = getattr(instance, "user", None)
-        if u:
-            fields = self._user_field_names()
+    return teacher
 
-            if "email" in validated_data and "email" in fields:
-                u.email = (validated_data.get("email") or "").strip().lower()
 
-            if "full_name" in validated_data:
-                fn = (validated_data.get("full_name") or "").strip()
-                if "full_name" in fields:
-                    u.full_name = fn
-                elif "name" in fields:
-                    u.name = fn
+@transaction.atomic
+def update(self, instance, validated_data):
+    # ✅ si llega courses, manejarlo aparte
+    courses = validated_data.pop("courses", None)
 
-            u.save()
+    # actualiza Teacher normal
+    for k, v in validated_data.items():
+        setattr(instance, k, v)
+    instance.save()
 
-        return instance
+    # ✅ si courses viene, actualiza m2m
+    if courses is not None and hasattr(instance, "courses"):
+        instance.courses.set(courses or [])
+
+    # si tiene user, actualiza email/full_name si el user tiene esos campos
+    u = getattr(instance, "user", None)
+    if u:
+        fields = self._user_field_names()
+
+        if "email" in validated_data and "email" in fields:
+            u.email = (validated_data.get("email") or "").strip().lower()
+
+        if "full_name" in validated_data:
+            fn = (validated_data.get("full_name") or "").strip()
+            if "full_name" in fields:
+                u.full_name = fn
+            elif "name" in fields:
+                u.name = fn
+
+        u.save()
+
+    return instance
 
 
 # ------------------ InstitutionSetting ------------------

@@ -71,6 +71,14 @@ export const Careers = {
 /* -------------------------------------------------------
    Planes (mallas) - academic app (stub router: /academic/plans)
 ------------------------------------------------------- */
+export const Courses = {
+    list: async (params = {}) => {
+        const data = await asJson("GET", "/academic/courses", null, { params });
+        const arr = pickFirstArray(data, ["items", "courses", "results"]);
+        return { items: arr };
+    },
+};
+
 export const Plans = {
     list: async () => {
         const data = await asJson("GET", "/academic/plans");

@@ -1,7 +1,7 @@
 # catalogs/models.py
 from django.conf import settings
 from django.db import models
-
+from academic.models import Course 
 
 class Period(models.Model):
     TERM_CHOICES = (
@@ -60,8 +60,14 @@ class Teacher(models.Model):
     phone = models.CharField(max_length=30, blank=True, default="")
     specialization = models.CharField(max_length=120, blank=True, default="")
 
+    # ✅ NUEVO: cursos asignados al docente (existentes en academic)
+    courses = models.ManyToManyField(
+        Course,
+        blank=True,
+        related_name="catalog_teachers",
+    )
+
     def __str__(self):
-        # ✅ NO uses first_name/last_name (tu User no los tiene)
         if self.user:
             if hasattr(self.user, "full_name") and (self.user.full_name or "").strip():
                 return self.user.full_name.strip()
@@ -72,7 +78,6 @@ class Teacher(models.Model):
             if hasattr(self.user, "email") and (self.user.email or "").strip():
                 return self.user.email.strip()
             return "Docente"
-
         return self.full_name or self.document or f"Teacher {self.pk}"
 
 

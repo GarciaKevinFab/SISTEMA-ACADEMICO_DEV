@@ -36,7 +36,7 @@ from .models import (
     AttendanceSession, AttendanceRow,
     Syllabus, EvaluationConfig,
     AcademicProcess, ProcessFile,
-    SectionGrades,InstitutionSettings,
+    SectionGrades,InstitutionSettings,Course
 )
 from .serializers import (
     PlanSerializer, PlanCreateSerializer,
@@ -1741,3 +1741,15 @@ def build_boleta_for_period(student: StudentProfile, period_q: str):
     _apply_grades_to_grouped(grouped, _grades_map_for_student(student, period_q=period_q))
     return grouped
 
+class CoursesListView(APIView):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        q = (request.query_params.get("q") or "").strip()
+        qs = Course.objects.all().order_by("code", "name")
+        if q:
+            qs = qs.filter(Q(code__icontains=q) | Q(name__icontains=q))
+
+        items = list(qs.values("id", "code", "name", "credits")[:1000])
+        return Response({"items": items})
