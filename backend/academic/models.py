@@ -166,3 +166,20 @@ class AcademicGradeRecord(models.Model):
             models.Index(fields=["student", "term"]),
             models.Index(fields=["course", "term"]),
         ]
+
+class InstitutionSettings(models.Model):
+    name = models.CharField(max_length=200, blank=True, default="")
+    ruc = models.CharField(max_length=20, blank=True, default="")
+    address = models.CharField(max_length=250, blank=True, default="")
+    website = models.CharField(max_length=120, blank=True, default="")
+    email = models.CharField(max_length=120, blank=True, default="")
+    phone = models.CharField(max_length=40, blank=True, default="")
+
+    # ✅ solo los que necesitas
+    logo_url = models.CharField(max_length=500, blank=True, default="")
+    signature_url = models.CharField(max_length=500, blank=True, default="")
+
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"InstitutionSettings #{self.id}"

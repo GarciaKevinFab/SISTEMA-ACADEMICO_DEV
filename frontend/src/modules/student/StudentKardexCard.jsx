@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
 import { FileText, RefreshCw, Layers, Download } from "lucide-react";
-
 import {
     Card,
     CardHeader,
@@ -12,8 +11,8 @@ import {
 } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
 import { Badge } from "../../components/ui/badge";
-
 import { Kardex } from "@/services/academic.service";
+import { ensureFreshToken } from "@/lib/api";
 
 const fade = {
     initial: { opacity: 0, y: 8 },
@@ -33,11 +32,40 @@ const parsePeriod = (p) => {
     const y = parseInt(m[1], 10);
     const term = String(m[2] || "").toUpperCase();
     const t =
-        term === "I" || term === "1" ? 1 :
-            term === "II" || term === "2" ? 2 :
-                term === "III" ? 3 :
-                    term === "IV" ? 4 : 0;
+        term === "I" || term === "1"
+            ? 1
+            : term === "II" || term === "2"
+                ? 2
+                : term === "III"
+                    ? 3
+                    : term === "IV"
+                        ? 4
+                        : 0;
     return { y, t, raw: s };
+};
+
+// ✅ NORMALIZA lo que sea (2024/2, 2024 - II, 2024II, etc) a YYYY-I/II si puede
+const toApiPeriod = (raw) => {
+    const s = String(raw || "")
+        .trim()
+        .toUpperCase()
+        .replace(/\s+/g, "")
+        .replace("/", "-");
+
+    // ya viene bien: 2024-I / 2024-II / 2024-1 / 2024-2
+    let m = s.match(/^(\d{4})-(I|II|1|2)$/);
+    if (m) return `${m[1]}-${m[2] === "1" ? "I" : m[2] === "2" ? "II" : m[2]}`;
+
+    // formatos raros: 2024II / 2024I
+    m = s.match(/^(\d{4})(I{1,2}|[12])$/);
+    if (m) return `${m[1]}-${m[2] === "1" ? "I" : m[2] === "2" ? "II" : m[2]}`;
+
+    // formato: 2024-01 / 2024-02 (por si acaso)
+    m = s.match(/^(\d{4})-(0?1|0?2)$/);
+    if (m) return `${m[1]}-${m[2].endsWith("1") ? "I" : "II"}`;
+
+    // si no calza, devuelve tal cual (backend igual _norm_term hace algo)
+    return s;
 };
 
 const normStr = (v) => (v == null ? "" : String(v).trim());
@@ -45,7 +73,12 @@ const getCycleKey = (it) =>
     normStr(it?.period ?? it?.cycle ?? it?.ciclo ?? it?.term ?? "Sin ciclo");
 
 const getCourseName = (r) =>
-    r?.course_name ?? r?.courseName ?? r?.curso ?? r?.subject ?? r?.asignatura ?? "—";
+    r?.course_name ??
+    r?.courseName ??
+    r?.curso ??
+    r?.subject ??
+    r?.asignatura ??
+    "—";
 
 const getCourseCode = (r) =>
     r?.course_code ?? r?.courseCode ?? r?.codigo ?? r?.code ?? "—";
@@ -72,6 +105,7 @@ const downloadBlob = (blob, filename) => {
     const a = document.createElement("a");
     a.href = url;
     a.download = filename;
+    a.rel = "noopener";
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -84,7 +118,10 @@ export default function StudentKardexCard({
     titlePrefix = "Kárdex / Notas",
 }) {
     const [loading, setLoading] = useState(false);
-    const [exporting, setExporting] = useState(false);
+
+    // ✅ separados
+    const [exportingCycle, setExportingCycle] = useState(false);
+    const [exportingAll, setExportingAll] = useState(false);
 
     const [kardex, setKardex] = useState(null);
     const [activeCycle, setActiveCycle] = useState("");
@@ -101,7 +138,9 @@ export default function StudentKardexCard({
             const data = await Kardex.ofStudent(studentKey);
             setKardex(data);
 
-            const list = pickArray(data, ["items", "records", "courses", "grades", "details"]) || [];
+            const list =
+                pickArray(data, ["items", "records", "courses", "grades", "details"]) ||
+                [];
 
             const byCycle = new Map();
             for (const it of list) {
@@ -120,7 +159,7 @@ export default function StudentKardexCard({
 
             setActiveCycle((prev) => {
                 if (prev && cycles.includes(prev)) return prev;
-                return cycles[0] || "";
+                return cycles[cycles.length - 1] || "";
             });
         } catch (e) {
             toast.error(e?.message || "Error al consultar kárdex");
@@ -137,7 +176,9 @@ export default function StudentKardexCard({
 
     const items = useMemo(() => {
         if (!kardex) return [];
-        const list = pickArray(kardex, ["items", "records", "courses", "grades", "details"]) || [];
+        const list =
+            pickArray(kardex, ["items", "records", "courses", "grades", "details"]) ||
+            [];
         return [...list].sort((a, b) => {
             const pa = parsePeriod(getCycleKey(a));
             const pb = parsePeriod(getCycleKey(b));
@@ -180,44 +221,52 @@ export default function StudentKardexCard({
         return { total: filtered.length, approved, avg };
     }, [filtered]);
 
-    const exportExcel = async ({ onlyCycle }) => {
-        if (!studentKey) return;
+    const exportPdfCycle = async () => {
+        if (!studentKey || !activeCycle) return;
+        if (exportingCycle || exportingAll) return;
+
+        const period = toApiPeriod(activeCycle);
+
         try {
-            setExporting(true);
-            const params = {};
-            if (onlyCycle && activeCycle) params.period = activeCycle;
+            setExportingCycle(true);
+            await ensureFreshToken();
 
-            const res = await Kardex.exportXlsx(studentKey, params);
-            const blob = res?.data;
+            const res = await Kardex.exportBoletaPeriodoPdf(studentKey, period);
+            const filename = `boleta-${studentKey}-${period.replace(/[-/]/g, "")}.pdf`;
 
-            const filename = `kardex-${studentKey}${onlyCycle && activeCycle ? "-" + activeCycle : ""}.xlsx`;
+            const blob = new Blob([res.data], { type: "application/pdf" });
             downloadBlob(blob, filename);
 
-            toast.success("Excel generado");
+            toast.success("PDF del ciclo generado");
         } catch (e) {
-            toast.error(e?.message || "No se pudo exportar el Excel");
+            toast.error(e?.message || "No se pudo exportar el PDF del ciclo");
         } finally {
-            setExporting(false);
+            setExportingCycle(false);
         }
     };
-    const exportPdf = async ({ onlyCycle }) => {
-        if (!studentKey) return;
+
+    const exportPdfAll = async () => {
+        if (!studentKey || !activeCycle) return;
+        if (exportingCycle || exportingAll) return;
+
+        const period = toApiPeriod(activeCycle);
+
         try {
-            setExporting(true);
-            const params = {};
-            if (onlyCycle && activeCycle) params.period = activeCycle;
+            setExportingAll(true);
+            await ensureFreshToken();
 
-            const res = await Kardex.exportPdf(studentKey, params);
-            const blob = res?.data;
+            const res = await Kardex.exportBoletaAnioPdf(studentKey, period);
+            const year = parsePeriod(period).y || "anio";
+            const filename = `boleta-${studentKey}-${year}-completo.pdf`;
 
-            const filename = `boleta-${studentKey}${onlyCycle && activeCycle ? "-" + activeCycle : ""}.pdf`;
+            const blob = new Blob([res.data], { type: "application/pdf" });
             downloadBlob(blob, filename);
 
-            toast.success("PDF generado");
+            toast.success("PDF completo generado");
         } catch (e) {
-            toast.error(e?.message || "No se pudo exportar el PDF");
+            toast.error(e?.message || "No se pudo exportar el PDF completo");
         } finally {
-            setExporting(false);
+            setExportingAll(false);
         }
     };
 
@@ -248,48 +297,25 @@ export default function StudentKardexCard({
                                 Recargar
                             </Button>
 
-                            {/* EXCEL */}
                             <Button
                                 variant="outline"
                                 className="rounded-xl gap-2"
-                                onClick={() => exportExcel({ onlyCycle: true })}
-                                disabled={exporting || !studentKey || !activeCycle}
+                                onClick={exportPdfCycle}
+                                disabled={exportingCycle || exportingAll || !studentKey || !activeCycle}
                             >
-                                <Download className={`h-4 w-4 ${exporting ? "animate-spin" : ""}`} />
-                                Excel ciclo
-                            </Button>
-
-                            <Button
-                                variant="outline"
-                                className="rounded-xl gap-2"
-                                onClick={() => exportExcel({ onlyCycle: false })}
-                                disabled={exporting || !studentKey}
-                            >
-                                <Download className={`h-4 w-4 ${exporting ? "animate-spin" : ""}`} />
-                                Excel todo
-                            </Button>
-
-                            {/* PDF */}
-                            <Button
-                                variant="outline"
-                                className="rounded-xl gap-2"
-                                onClick={() => exportPdf({ onlyCycle: true })}
-                                disabled={exporting || !studentKey || !activeCycle}
-                            >
-                                <Download className={`h-4 w-4 ${exporting ? "animate-spin" : ""}`} />
+                                <Download className={`h-4 w-4 ${exportingCycle ? "animate-spin" : ""}`} />
                                 PDF ciclo
                             </Button>
 
                             <Button
                                 className="rounded-xl gap-2"
-                                onClick={() => exportPdf({ onlyCycle: false })}
-                                disabled={exporting || !studentKey}
+                                onClick={exportPdfAll}
+                                disabled={exportingAll || exportingCycle || !studentKey || !activeCycle}
                             >
-                                <Download className={`h-4 w-4 ${exporting ? "animate-spin" : ""}`} />
+                                <Download className={`h-4 w-4 ${exportingAll ? "animate-spin" : ""}`} />
                                 PDF todo
                             </Button>
                         </div>
-
                     </div>
                 </CardHeader>
 
@@ -389,7 +415,13 @@ export default function StudentKardexCard({
                                                 {filtered.map((r, idx) => {
                                                     const status = getStatus(r);
                                                     return (
-                                                        <tr key={r.id || r._id || `${getCycleKey(r)}-${getCourseCode(r)}-${idx}`}>
+                                                        <tr
+                                                            key={
+                                                                r.id ||
+                                                                r._id ||
+                                                                `${getCycleKey(r)}-${getCourseCode(r)}-${idx}`
+                                                            }
+                                                        >
                                                             <td className="p-2">{getCourseName(r)}</td>
                                                             <td className="p-2">{getCourseCode(r)}</td>
                                                             <td className="p-2">{getCredits(r)}</td>
@@ -415,7 +447,8 @@ export default function StudentKardexCard({
                             ) : (
                                 <div className="rounded-2xl border p-4 bg-white/60 dark:bg-neutral-900/40">
                                     <p className="text-sm text-muted-foreground">
-                                        No se encontraron ciclos. Verifica que el backend envíe <code>items</code> con <code>period</code>.
+                                        No se encontraron ciclos. Verifica que el backend envíe <code>items</code> con{" "}
+                                        <code>period</code>.
                                     </p>
                                 </div>
                             )}

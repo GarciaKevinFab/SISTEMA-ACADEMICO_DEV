@@ -67,6 +67,14 @@ import GradesAttendanceComponent from "./GradesAttendanceComponent";
 import SectionSyllabusEvaluation from "./SectionSyllabusEvaluation";
 import AcademicProcessesInbox from "./AcademicProcessesInbox";
 import AcademicReportsPage from "./AcademicReports";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 /* ---------- Debounce (✅ requerido por Planes) ---------- */
 const useDebounce = (value, delay = 350) => {
@@ -283,6 +291,11 @@ function PlansAndCurricula() {
   const [list, setList] = useState([]);
   const [careers, setCareers] = useState([]);
   const [selectedPlan, setSelectedPlan] = useState(null);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleteText, setDeleteText] = useState("");
+  const [deleting, setDeleting] = useState(false);
+
 
   const [pform, setPform] = useState({
     name: "",
@@ -455,6 +468,47 @@ function PlansAndCurricula() {
     return Array.from({ length: total }, (_, i) => ({ semester: i + 1 }));
   }, [semesterIndex, selectedPlan?.semesters]);
 
+  const requestDeletePlan = (plan) => {
+    setDeleteTarget(plan);
+    setDeleteText("");
+    setDeleteOpen(true);
+  };
+
+  const confirmDeletePlan = async () => {
+    if (!deleteTarget?.id) return;
+
+    // Confirmación tipo “escribe ELIMINAR”
+    if (deleteText.trim().toUpperCase() !== "ELIMINAR") {
+      toast.error("Escribe ELIMINAR para confirmar");
+      return;
+    }
+
+    setDeleting(true);
+    try {
+      await Plans.remove(deleteTarget.id);
+      toast.success("Plan eliminado (y todo lo relacionado) 🔥");
+
+      setList((prev) => prev.filter((p) => p.id !== deleteTarget.id));
+
+      if (selectedPlan?.id === deleteTarget.id) {
+        setSelectedPlan(null);
+        setCourses([]);
+        setSemesterIndex([]);
+        setSelectedSemester(1);
+        setCourseQ("");
+        setPrereqFor(null);
+        setPrereqs([]);
+      }
+
+      setDeleteOpen(false);
+      setDeleteTarget(null);
+    } catch (e) {
+      toast.error(e?.message || "Error al eliminar plan");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   return (
     <IfPerm any={REQS.plans}>
       <div className="page-container space-y-6">
@@ -535,27 +589,43 @@ function PlansAndCurricula() {
           <Card className="border">
             <CardHeader>{sectionHeader({ title: "Planes" })}</CardHeader>
             <CardContent className="space-y-2">
-              {(Array.isArray(list) ? list : []).length === 0 ? <Empty label="Sin planes" /> : null}
-
               {(Array.isArray(list) ? list : []).map((p) => (
-                <button
-                  type="button"
+                <div
                   key={p.id}
-                  onClick={() => setSelectedPlan(p)}
-                  className={`w-full text-left p-3 border rounded-xl flex items-center justify-between hover:bg-accent/10 transition-colors ${selectedPlan?.id === p.id ? "bg-primary/5 border-primary/30" : ""
+                  className={`w-full p-3 border rounded-xl flex items-center justify-between hover:bg-accent/10 transition-colors ${selectedPlan?.id === p.id ? "bg-primary/5 border-primary/30" : ""
                     }`}
                 >
-                  <div>
-                    <div className="font-medium">{p.name}</div>
-                    <div className="text-xs text-muted-foreground">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedPlan(p)}
+                    className="flex-1 text-left min-w-0"
+                  >
+                    <div className="font-medium truncate">{p.name}</div>
+                    <div className="text-xs text-muted-foreground truncate">
                       Carrera: {p.career_name || p.career?.name} · Semestres: {p.semesters}
                     </div>
+                  </button>
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    <Badge variant="secondary" className="rounded-full">
+                      {p.start_year}
+                    </Badge>
+
+                    <IfPerm any={REQS.plansDelete}>
+                      <Button
+                        type="button"
+                        variant="destructive"
+                        size="sm"
+                        className="rounded-xl"
+                        onClick={() => requestDeletePlan(p)}
+                      >
+                        Eliminar
+                      </Button>
+                    </IfPerm>
                   </div>
-                  <Badge variant="secondary" className="rounded-full">
-                    {p.start_year}
-                  </Badge>
-                </button>
+                </div>
               ))}
+
             </CardContent>
           </Card>
 
@@ -849,6 +919,55 @@ function PlansAndCurricula() {
               ) : null}
             </CardContent>
           </Card>
+          <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+            <DialogContent className="sm:max-w-[520px]">
+              <DialogHeader>
+                <DialogTitle className="text-destructive">
+                  Eliminar plan de estudios
+                </DialogTitle>
+                <DialogDescription>
+                  Esto eliminará <strong>todo</strong> lo relacionado a este plan:
+                  cursos del plan, prerrequisitos, secciones, horarios, asistencia,
+                  sílabos, configuración de evaluación y actas/notas.
+                  <br /><br />
+                  Plan: <strong>{deleteTarget?.name || "-"}</strong>
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="space-y-2">
+                <Label>Escribe <strong>ELIMINAR</strong> para confirmar</Label>
+                <Input
+                  value={deleteText}
+                  onChange={(e) => setDeleteText(e.target.value)}
+                  placeholder="ELIMINAR"
+                  className="rounded-xl"
+                />
+              </div>
+
+              <DialogFooter className="gap-2 sm:gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="rounded-xl"
+                  onClick={() => setDeleteOpen(false)}
+                  disabled={deleting}
+                >
+                  Cancelar
+                </Button>
+
+                <Button
+                  type="button"
+                  variant="destructive"
+                  className="rounded-xl"
+                  onClick={confirmDeletePlan}
+                  disabled={deleting}
+                >
+                  {deleting ? "Eliminando..." : "Eliminar definitivamente"}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
         </div>
       </div>
     </IfPerm>
@@ -1244,33 +1363,100 @@ function KardexAndCertificates() {
   const [period, setPeriod] = useState("2025-I");
   const [data, setData] = useState(null);
 
+  const [loading, setLoading] = useState(false);
+  const [exportingPeriod, setExportingPeriod] = useState(false);
+  const [exportingYear, setExportingYear] = useState(false);
+
+  const toApiPeriod = (raw) => {
+    const s = String(raw || "")
+      .trim()
+      .toUpperCase()
+      .replace(/\s+/g, "")
+      .replace("/", "-");
+
+    let m = s.match(/^(\d{4})-(I|II|1|2)$/);
+    if (m) return `${m[1]}-${m[2] === "1" ? "I" : m[2] === "2" ? "II" : m[2]}`;
+
+    m = s.match(/^(\d{4})(I{1,2}|[12])$/);
+    if (m) return `${m[1]}-${m[2] === "1" ? "I" : m[2] === "2" ? "II" : m[2]}`;
+
+    m = s.match(/^(\d{4})-(0?1|0?2)$/);
+    if (m) return `${m[1]}-${m[2].endsWith("1") ? "I" : "II"}`;
+
+    return s;
+  };
+
+  const parseYearFromPeriod = (p) => {
+    const s = toApiPeriod(p);
+    const m = s.match(/^(\d{4})-(I|II|1|2)$/);
+    return m ? Number(m[1]) : 0;
+  };
+
+  const downloadBlob = (blob, filename) => {
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    a.rel = "noopener";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
+  };
+
   const fetchKardex = async () => {
     if (!studentId) return toast.error("Ingrese ID/DNI del estudiante");
     try {
+      setLoading(true);
       const k = await Kardex.ofStudent(studentId);
       setData(k);
+      toast.success("Kárdex cargado");
     } catch (e) {
       toast.error(e.message || "Error al consultar kárdex");
+      setData(null);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const genBoleta = async () => {
-    if (!studentId) return;
+  const exportBoletaPeriodo = async () => {
+    if (!studentId) return toast.error("Ingrese ID/DNI del estudiante");
+    const p = toApiPeriod(period);
+    if (!p) return toast.error("Periodo inválido");
+
+    if (exportingPeriod || exportingYear) return;
+
     try {
-      const res = await generatePDFWithPolling(`/kardex/${studentId}/boleta`, { academic_period: period }, { testId: "boleta-pdf" });
-      if (res.success) await downloadFile(res.downloadUrl, `boleta-${studentId}-${period}.pdf`);
-    } catch {
-      toast.error("Error al generar boleta");
+      setExportingPeriod(true);
+      const res = await Kardex.exportBoletaPeriodoPdf(studentId, p);
+      const blob = new Blob([res.data], { type: "application/pdf" });
+      downloadBlob(blob, `boleta-${studentId}-${p.replace(/[-/]/g, "")}.pdf`);
+      toast.success("Boleta del periodo descargada");
+    } catch (e) {
+      toast.error(e?.message || "No se pudo generar boleta del periodo");
+    } finally {
+      setExportingPeriod(false);
     }
   };
 
-  const genConstancia = async () => {
-    if (!studentId) return;
+  const exportBoletaAnio = async () => {
+    if (!studentId) return toast.error("Ingrese ID/DNI del estudiante");
+    const p = toApiPeriod(period);
+    if (!p) return toast.error("Periodo inválido");
+
+    if (exportingPeriod || exportingYear) return;
+
     try {
-      const res = await generatePDFWithPolling(`/kardex/${studentId}/constancia`, {}, { testId: "constancia-pdf" });
-      if (res.success) await downloadFile(res.downloadUrl, `constancia-${studentId}.pdf`);
-    } catch {
-      toast.error("Error al generar constancia");
+      setExportingYear(true);
+      const res = await Kardex.exportBoletaAnioPdf(studentId, p);
+      const year = parseYearFromPeriod(p) || "anio";
+      const blob = new Blob([res.data], { type: "application/pdf" });
+      downloadBlob(blob, `boleta-${studentId}-${year}-completo.pdf`);
+      toast.success("Boleta anual descargada");
+    } catch (e) {
+      toast.error(e?.message || "No se pudo generar boleta anual");
+    } finally {
+      setExportingYear(false);
     }
   };
 
@@ -1279,13 +1465,29 @@ function KardexAndCertificates() {
   return (
     <div className="space-y-4">
       <Card>
-        <CardHeader>{sectionHeader({ title: "Consulta de Kárdex", Icon: FileText })}</CardHeader>
+        <CardHeader>
+          {sectionHeader({ title: "Consulta de Kárdex", Icon: FileText })}
+        </CardHeader>
+
         <CardContent className="grid md:grid-cols-4 gap-3">
-          <Labeled label="ID/DNI Estudiante" value={studentId} onChange={setStudentId} placeholder="e.g. 71234567" />
-          <Labeled label="Período" value={period} onChange={setPeriod} />
-          <div className="flex items-end">
-            <Button onClick={fetchKardex} className="gap-2">
-              <SearchIcon className="h-4 w-4" /> Consultar
+          <Labeled
+            label="ID/DNI Estudiante"
+            value={studentId}
+            onChange={setStudentId}
+            placeholder="e.g. 71234567"
+          />
+
+          <Labeled
+            label="Período"
+            value={period}
+            onChange={setPeriod}
+            placeholder="e.g. 2018-II"
+          />
+
+          <div className="flex items-end gap-2">
+            <Button onClick={fetchKardex} className="gap-2" disabled={loading}>
+              <SearchIcon className="h-4 w-4" />{" "}
+              {loading ? "Consultando..." : "Consultar"}
             </Button>
           </div>
         </CardContent>
@@ -1294,18 +1496,40 @@ function KardexAndCertificates() {
       {data ? (
         <Card className="border">
           <CardHeader>{sectionHeader({ title: "Resultados" })}</CardHeader>
-          <CardContent className="space-y-2 text-sm">
-            <div><strong>Estudiante:</strong> {data.student_name}</div>
-            <div><strong>Carrera:</strong> {data.career_name}</div>
-            <div><strong>Créditos aprobados:</strong> {data.credits_earned}</div>
-            <div><strong>PPA:</strong> {data.gpa ?? "-"}</div>
 
-            <div className="flex gap-2 mt-2">
-              <Button variant="outline" onClick={genBoleta} className="gap-2">
-                <FileText className="h-4 w-4" /> Boleta PDF
+          <CardContent className="space-y-2 text-sm">
+            <div>
+              <strong>Estudiante:</strong> {data.student_name}
+            </div>
+            <div>
+              <strong>Carrera:</strong> {data.career_name}
+            </div>
+            <div>
+              <strong>Créditos aprobados:</strong> {data.credits_earned}
+            </div>
+            <div>
+              <strong>PPA:</strong> {data.gpa ?? "-"}
+            </div>
+
+            <div className="flex flex-wrap gap-2 mt-3">
+              <Button
+                variant="outline"
+                onClick={exportBoletaPeriodo}
+                className="gap-2"
+                disabled={exportingPeriod || exportingYear}
+              >
+                <FileText className="h-4 w-4" />
+                {exportingPeriod ? "Generando..." : "Boleta periodo PDF"}
               </Button>
-              <Button variant="outline" onClick={genConstancia} className="gap-2">
-                <FileText className="h-4 w-4" /> Constancia PDF
+
+              <Button
+                variant="outline"
+                onClick={exportBoletaAnio}
+                className="gap-2"
+                disabled={exportingPeriod || exportingYear}
+              >
+                <FileText className="h-4 w-4" />
+                {exportingYear ? "Generando..." : "Boleta año PDF"}
               </Button>
             </div>
           </CardContent>

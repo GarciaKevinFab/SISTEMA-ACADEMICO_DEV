@@ -277,15 +277,17 @@ const SideNav = () => {
       )}
 
       {/* SIDEBAR */}
-      <aside
-        className={`
-          fixed inset-y-0 left-0 z-[80] xl:relative xl:z-0
-          flex flex-col bg-[#0f172a] text-slate-300 border-r border-slate-800 shadow-2xl
-          transition-[width,transform] duration-300 ease-in-out
-          ${isMobileOpen ? "translate-x-0" : "-translate-x-full xl:translate-x-0"}
-          ${isCollapsed ? "xl:w-20" : "xl:w-72 w-[280px]"}
-        `}
-      >
+     <aside
+  className={`
+    fixed inset-y-0 left-0 z-[80]
+    xl:sticky xl:top-0 xl:h-[100dvh] xl:z-0 xl:self-start
+    flex flex-col bg-[#0f172a] text-slate-300 border-r border-slate-800 shadow-2xl
+    transition-[width,transform] duration-300 ease-in-out
+    ${isMobileOpen ? "translate-x-0" : "-translate-x-full xl:translate-x-0"}
+    ${isCollapsed ? "xl:w-20" : "xl:w-72 w-[280px]"}
+  `}
+>
+
         {/* Toggle Button (Desktop) */}
         <div className="hidden xl:block absolute right-0 top-1/2 -translate-y-1/2 translate-x-1/2 z-[90]">
           <button

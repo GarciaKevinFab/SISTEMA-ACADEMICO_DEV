@@ -35,17 +35,27 @@ const Layout = ({ children }) => {
           <div className="px-6 py-4 flex items-center justify-between">
 
             {/* IZQUIERDA: Título y Bienvenida */}
-            <div className="flex flex-col">
-              <h1 className="text-xl font-bold text-white tracking-tight drop-shadow-sm">
-                Sistema Académico
-              </h1>
-              <p className="text-sm text-blue-100/90 mt-0.5 font-medium flex items-center gap-1">
-                Bienvenido, 
-                <span className="text-white font-semibold tracking-wide">
-                  {user.full_name}
-                </span>
-              </p>
-            </div>
+            <div className="flex items-center gap-3 min-w-0">
+  <img
+  src="/loguito.png"
+  alt="Loguito"
+  className="w-[69px] h-[69px] object-contain shrink-0 drop-shadow-sm"
+  draggable="false"
+/>
+
+
+  <div className="flex flex-col min-w-0">
+    <h1 className="text-xl font-bold text-white tracking-tight drop-shadow-sm truncate">
+      Sistema Académico
+    </h1>
+    <p className="text-sm text-blue-100/90 mt-0.5 font-medium flex items-center gap-1">
+      Bienvenido,
+      <span className="text-white font-semibold tracking-wide">
+        {user.full_name}
+      </span>
+    </p>
+  </div>
+</div>
 
             {/* DERECHA: Fecha y Perfil */}
             <div className="flex items-center gap-6">

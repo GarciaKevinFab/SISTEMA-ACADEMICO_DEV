@@ -12,6 +12,8 @@ import {
     User,
     Users,
     Info,
+    ChevronRight,
+    School,
 } from "lucide-react";
 
 import {
@@ -277,7 +279,7 @@ export default function StudentModule() {
     }
 
     return (
-        <div className="h-full overflow-y-auto p-4 md:p-6 pb-40 space-y-6">
+       <div className="w-full min-w-0 p-4 md:p-6 pb-40 space-y-6">
             <motion.div {...fade}>
                 <Card className="rounded-2xl shadow-[0_8px_30px_rgba(0,0,0,0.06)] border-t-4 border-t-slate-700 bg-white/70 dark:bg-neutral-900/60 backdrop-blur-md">
                     <CardHeader className="pb-3">
@@ -308,46 +310,55 @@ export default function StudentModule() {
                     </CardHeader>
 
                     <CardContent className="space-y-5">
-                        {/* ADMIN: picker mejorado */}
+                       {/* ADMIN: picker mejorado */}
                         {mode === "admin" && (
-                            <div className="rounded-2xl border border-white/50 dark:border-white/10 p-4 bg-white/60 dark:bg-neutral-900/40">
-                                <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
-                                    <div className="md:col-span-7">
-                                        <Label>Buscar estudiante</Label>
-                                        <div className="relative mt-1">
-                                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 opacity-60" />
+                            <div className="rounded-2xl border border-white/50 dark:border-white/10 p-5 bg-white/60 dark:bg-neutral-900/40 shadow-sm transition-all hover:shadow-md">
+                                <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-end">
+                                    {/* COLUMNA 1: BUSCADOR */}
+                                    <div className="md:col-span-7 space-y-2">
+                                        <Label className="flex items-center gap-2 text-muted-foreground font-semibold">
+                                            <Search className="h-4 w-4 text-indigo-500" />
+                                            Buscar estudiante
+                                        </Label>
+                                        <div className="relative group">
+                                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 opacity-50 transition-opacity group-hover:opacity-100" />
                                             <Input
-                                                className="pl-9 rounded-xl"
+                                                className="pl-10 rounded-xl bg-white/80 dark:bg-black/20 border-white/20 focus:ring-2 transition-all duration-300"
                                                 placeholder="Documento, apellidos, nombres..."
-                                                value={q}
+                                                value={q} 
                                                 onChange={(e) => setQ(e.target.value)}
                                             />
                                         </div>
-
-                                        <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
-                                            <Info className="h-4 w-4" />
-                                            Tip: escribe DNI o apellidos. El backend debe soportar filtro <code>q</code>.
+                                        <div className="flex items-center gap-2 text-[10px] uppercase tracking-wider text-muted-foreground/70 pl-1">
+                                            <Info className="h-3 w-3" />
+                                            <span>Filtro por DNI o Apellidos (Backend 'q')</span>
                                         </div>
                                     </div>
 
-                                    <div className="md:col-span-5">
-                                        <Label>Seleccionar</Label>
-                                        <div className="mt-1 relative">
-                                            <Users className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 opacity-60 pointer-events-none" />
+                                    {/* COLUMNA 2: SELECTOR */}
+                                    <div className="md:col-span-5 space-y-2">
+                                        <Label className="flex items-center gap-2 text-muted-foreground font-semibold">
+                                            <Users className="h-4 w-4 text-emerald-500" />
+                                            Resultados ({candidates.length})
+                                        </Label>
+                                        <div className="relative group">
+                                            {/* Icono decorativo de flecha a la derecha */}
+                                            <ChevronRight className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 opacity-50 pointer-events-none rotate-90" />
                                             <select
-                                                className="w-full rounded-xl border pl-9 pr-3 py-2 bg-transparent"
+                                                className="w-full rounded-xl border border-input bg-white/80 dark:bg-black/20 px-3 py-2 text-sm shadow-sm transition-all focus:ring-2 outline-none appearance-none cursor-pointer hover:bg-white dark:hover:bg-black/40"
                                                 value={selectedId}
                                                 onChange={(e) => setSelectedId(e.target.value)}
                                             >
-                                                <option value="">— Selecciona —</option>
+                                                <option value="">— Selecciona un resultado —</option>
                                                 {candidates.map((s) => {
+                                                    // Mantenemos tu lógica de mapeo intacta
                                                     const id = s.id || s._id;
                                                     const ap = `${s.apellidoPaterno || ""} ${s.apellidoMaterno || ""}`.trim();
                                                     const name = `${ap} ${s.nombres || ""}`.trim() || "—";
                                                     const doc = s.numDocumento ? `DOC ${s.numDocumento}` : "";
                                                     return (
                                                         <option key={id} value={id}>
-                                                            {name} {doc ? `- ${doc}` : ""}
+                                                            {name} {doc ? `• ${doc}` : ""}
                                                         </option>
                                                     );
                                                 })}
@@ -356,80 +367,93 @@ export default function StudentModule() {
                                     </div>
                                 </div>
 
+                                {/* BARRA INFERIOR: ESTADO DEL SELECCIONADO */}
                                 {studentLoading ? (
-                                    <div className="mt-3 text-sm text-muted-foreground">
-                                        Cargando estudiante…
+                                    <div className="mt-4 flex items-center justify-center gap-2 text-sm text-muted-foreground py-2 animate-pulse">
+                                        <RefreshCw className="h-4 w-4 animate-spin" /> Cargando ficha...
                                     </div>
                                 ) : selectedId && student ? (
-                                    <div className="mt-3 rounded-xl border bg-white/60 dark:bg-neutral-900/30 px-3 py-2 text-sm flex items-center justify-between gap-2">
-                                        <div className="truncate">
-                                            <span className="font-medium">Seleccionado:</span>{" "}
-                                            <span className="text-muted-foreground">{selectedLabel}</span>
+                                    <motion.div 
+                                        {...fade}
+                                        className="mt-4 rounded-xl border border-emerald-500/20 bg-emerald-500/5 px-4 py-3 text-sm flex flex-col sm:flex-row items-center justify-between gap-3"
+                                    >
+                                        <div className="flex items-center gap-3 min-w-0 w-full overflow-hidden">
+                                        <div className="h-8 w-8 rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center text-emerald-600 dark:text-emerald-400 font-bold shrink-0">
+                                            <User className="h-4 w-4" />
                                         </div>
 
-                                        {canViewKardex ? (
+                                        <div className="min-w-0 flex-1 overflow-hidden">
+                                        <span className="block font-semibold text-emerald-700 dark:text-emerald-300 truncate">
+                                            Estudiante Activo
+                                            </span>
+                                        <span className="block text-muted-foreground truncate text-xs">
+                                        {selectedLabel}
+                                        </span>
+                                            </div>
+                                            </div>
+
+
+                                        {canViewKardex && (
                                             <Button
                                                 variant="outline"
                                                 size="sm"
-                                                className="rounded-xl"
+                                                className="rounded-lg border-emerald-200 hover:bg-emerald-100 dark:border-emerald-800 dark:hover:bg-emerald-900/50 transition-colors shrink-0"
                                                 onClick={() => setTab("kardex")}
                                             >
-                                                <FileText className="h-4 w-4 mr-2" />
-                                                Ver kárdex
+                                                <FileText className="h-3.5 w-3.5 mr-2 text-emerald-600" />
+                                                Ir a Notas
                                             </Button>
-                                        ) : null}
-                                    </div>
+                                        )}
+                                    </motion.div>
                                 ) : null}
                             </div>
                         )}
 
                         {/* ✅ Tabs con estilo tipo "píldora" (mejor UX visual) */}
                         <Tabs value={tab} onValueChange={setTab} className="space-y-4">
-                            <TabsList
-                                className="
-                  w-full
-                  flex
-                  flex-wrap
-                  gap-2
-                  p-2
-                  rounded-2xl
-                  bg-white/70 dark:bg-neutral-900/40
-                  border border-white/40 dark:border-white/10
-                  shadow-sm
-                "
-                            >
-                                <TabsTrigger
-                                    value="profile"
-                                    className="
-                    rounded-xl
-                    px-4 py-2
-                    flex items-center gap-2
-                    data-[state=active]:bg-slate-900 data-[state=active]:text-white
-                    dark:data-[state=active]:bg-white dark:data-[state=active]:text-black
-                  "
-                                >
-                                    <User className="h-4 w-4" />
-                                    Perfil
-                                </TabsTrigger>
+                            {/* PEGA ESTO EN SU LUGAR */}
+                           <TabsList className="w-full grid grid-cols-2 gap-3 sm:gap-4 bg-transparent p-0 mb-6">
+  <TabsTrigger
+    value="profile"
+    className="
+      w-full min-w-0
+      rounded-xl border border-transparent
+      data-[state=active]:border-slate-200 dark:data-[state=active]:border-slate-800
+      data-[state=active]:bg-white dark:data-[state=active]:bg-black/40
+      data-[state=active]:shadow-sm
+      py-3 px-2 sm:px-4
+      transition-all duration-300
+    "
+  >
+    <div className="flex items-center justify-center gap-2 min-w-0 w-full overflow-hidden">
+      <User className="h-4 w-4 opacity-70 shrink-0" />
+      <span className="min-w-0 truncate">Ficha de Perfil</span>
+    </div>
+  </TabsTrigger>
 
-                                {canViewKardex ? (
-                                    <TabsTrigger
-                                        value="kardex"
-                                        disabled={mode === "admin" && !selectedId}
-                                        className="
-                      rounded-xl
-                      px-4 py-2
-                      flex items-center gap-2
-                      data-[state=active]:bg-slate-900 data-[state=active]:text-white
-                      dark:data-[state=active]:bg-white dark:data-[state=active]:text-black
-                      data-[disabled]:opacity-50 data-[disabled]:cursor-not-allowed
-                    "
-                                    >
-                                        <FileText className="h-4 w-4" />
-                                        Kárdex / Notas
-                                    </TabsTrigger>
-                                ) : null}
-                            </TabsList>
+  {canViewKardex && (
+    <TabsTrigger
+      value="kardex"
+      disabled={mode === "admin" && !selectedId}
+      className="
+        w-full min-w-0
+        rounded-xl border border-transparent
+        data-[state=active]:border-slate-200 dark:data-[state=active]:border-slate-800
+        data-[state=active]:bg-white dark:data-[state=active]:bg-black/40
+        data-[state=active]:shadow-sm
+        py-3 px-2 sm:px-4
+        transition-all duration-300
+        data-[disabled]:opacity-40
+      "
+    >
+      <div className="flex items-center justify-center gap-2 min-w-0 w-full overflow-hidden">
+        <GraduationCap className="h-4 w-4 opacity-70 shrink-0" />
+        <span className="min-w-0 truncate">Historial Académico</span>
+      </div>
+    </TabsTrigger>
+  )}
+</TabsList>
+
 
                             {/* PERFIL */}
                             <TabsContent value="profile" className="mt-0">

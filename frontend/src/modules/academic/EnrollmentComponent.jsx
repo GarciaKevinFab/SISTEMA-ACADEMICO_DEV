@@ -5,9 +5,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../..
 import { Button } from "../../components/ui/button";
 import { Badge } from "../../components/ui/badge";
 import { toast } from "sonner";
-import { CheckCircle, AlertTriangle, Clock, Plus, Search as SearchIcon, FileText } from "lucide-react";
+import { CheckCircle,Trash2,BookOpen,Check,Library, AlertTriangle, Clock, Plus, Search as SearchIcon, FileText, Hash } from "lucide-react";
 import { generatePDFWithPolling, downloadFile } from "../../utils/pdfQrPolling";
-
 /* ---------------- helpers ---------------- */
 function formatApiError(err, fallback = "Ocurrió un error") {
   const data = err?.response?.data;
@@ -244,33 +243,91 @@ const EnrollmentComponent = () => {
         </div>
       </div>
 
-      {/* Course Selection */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Selección de Cursos</CardTitle>
-          <CardDescription>Seleccione los cursos para el período académico {enrollmentData.academic_period}</CardDescription>
+     {/* Course Selection Section */}
+    <div className="space-y-6"> {/* Contenedor para separar ambas tarjetas */}
+      
+      {/* 1. Grid de Cursos Disponibles */}
+      <Card className="border-slate-200 shadow-sm overflow-hidden">
+        <CardHeader className="bg-slate-50/50 border-b border-slate-100 pb-4">
+          <div className="flex items-center gap-2">
+            <div className="p-2 bg-blue-100 rounded-lg">
+              <Library className="h-5 w-5 text-blue-600" />
+            </div>
+            <div>
+              <CardTitle className="text-lg text-slate-800">Selección de Cursos</CardTitle>
+              <CardDescription>
+                Cursos disponibles para el período <span className="font-medium text-slate-700">{enrollmentData.academic_period}</span>
+              </CardDescription>
+            </div>
+          </div>
         </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        
+        <CardContent className="p-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
             {(Array.isArray(courses) ? courses : []).map((course) => {
               const selected = selectedCourses.some((c) => c.id === course.id);
+              
               return (
-                <Card key={course.id} className="cursor-pointer hover:shadow-md transition-shadow">
-                  <CardContent className="p-4">
-                    <div className="flex justify-between items-start mb-2">
-                      <h4 className="font-semibold text-sm">{course.name}</h4>
-                      <Badge variant="outline">{course.credits} créditos</Badge>
+                <Card 
+                  key={course.id} 
+                  className={`
+                    relative transition-all duration-200 cursor-pointer group
+                    ${selected 
+                      ? "border-blue-500 ring-1 ring-blue-500 bg-blue-50/10 shadow-sm" 
+                      : "border-slate-200 hover:border-blue-300 hover:shadow-md bg-white"
+                    }
+                  `}
+                >
+                  <CardContent className="p-5 flex flex-col h-full justify-between gap-4">
+                    
+                    {/* Header del Card */}
+                    <div>
+                      <div className="flex justify-between items-start gap-2 mb-3">
+                        <div className="p-1.5 bg-slate-100 rounded-md text-slate-500 group-hover:text-blue-600 group-hover:bg-blue-50 transition-colors">
+                            <BookOpen className="h-4 w-4" />
+                        </div>
+                        <Badge variant={selected ? "default" : "secondary"} className={selected ? "bg-blue-600" : "bg-slate-100 text-slate-600"}>
+                          {course.credits} créditos
+                        </Badge>
+                      </div>
+                      
+                      <h4 className={`font-bold text-base mb-1 leading-tight ${selected ? "text-blue-700" : "text-slate-800"}`}>
+                        {course.name}
+                      </h4>
                     </div>
-                    <p className="text-xs text-gray-600 mb-2">{course.code}</p>
-                    <p className="text-xs text-gray-500 mb-3">{course.schedule}</p>
 
+                    {/* Info del Curso */}
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2 text-xs text-slate-500 bg-slate-50 p-2 rounded-lg border border-slate-100">
+                        <Hash className="h-3.5 w-3.5 text-slate-400" />
+                        <span className="font-mono text-slate-600">{course.code}</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-xs text-slate-500 px-2">
+                        <Clock className="h-3.5 w-3.5 text-slate-400" />
+                        <span>{course.schedule}</span>
+                      </div>
+                    </div>
+
+                    {/* Botón de Acción */}
                     <Button
                       size="sm"
                       variant={selected ? "default" : "outline"}
                       onClick={() => (selected ? removeCourseFromSelection(course.id) : addCourseToSelection(course))}
-                      className="w-full"
+                      className={`w-full rounded-xl transition-all ${
+                        selected 
+                          ? "bg-blue-600 hover:bg-blue-700 shadow-md shadow-blue-200" 
+                          : "border-slate-300 text-slate-600 hover:text-blue-600 hover:border-blue-400 hover:bg-blue-50"
+                      }`}
                     >
-                      {selected ? "Seleccionado" : "Seleccionar"}
+                      {selected ? (
+                        <>
+                          <Check className="h-4 w-4 mr-2" /> Seleccionado
+                        </>
+                      ) : (
+                        <>
+                          <Plus className="h-4 w-4 mr-2" /> Agregar
+                        </>
+                      )}
                     </Button>
                   </CardContent>
                 </Card>
@@ -280,21 +337,41 @@ const EnrollmentComponent = () => {
         </CardContent>
       </Card>
 
-      {/* Selected */}
+      {/* 2. Lista de Cursos Seleccionados (Resumen) */}
       {selectedCourses.length > 0 && (
-        <Card>
-          <CardHeader><CardTitle>Cursos Seleccionados ({selectedCourses.length})</CardTitle></CardHeader>
-          <CardContent>
+        <Card className="border-green-200 bg-green-50/30 shadow-sm animate-in fade-in slide-in-from-bottom-4 duration-300">
+          <CardHeader className="pb-3 border-b border-green-100">
+            <CardTitle className="text-base text-green-800 flex items-center gap-2">
+              <Check className="h-5 w-5 p-1 bg-green-200 rounded-full text-green-700" />
+              Cursos Seleccionados ({selectedCourses.length})
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="pt-4">
             <div className="space-y-2">
               {selectedCourses.map((course) => (
-                <div key={course.id} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
-                  <div>
-                    <span className="font-medium">{course.name}</span>
-                    <span className="text-sm text-gray-500 ml-2">({course.code})</span>
+                <div 
+                  key={course.id} 
+                  className="group flex justify-between items-center p-3 bg-white border border-slate-200 rounded-xl hover:border-blue-300 hover:shadow-sm transition-all"
+                >
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3">
+                    <span className="font-semibold text-slate-800 text-sm">{course.name}</span>
+                    <span className="text-xs text-slate-400 font-mono bg-slate-50 px-1.5 py-0.5 rounded border border-slate-100">
+                      {course.code}
+                    </span>
                   </div>
-                  <div className="flex items-center space-x-2">
-                    <Badge>{course.credits} créditos</Badge>
-                    <Button size="sm" variant="ghost" onClick={() => removeCourseFromSelection(course.id)}>×</Button>
+                  
+                  <div className="flex items-center gap-3">
+                    <Badge variant="outline" className="border-slate-200 text-slate-600 font-normal">
+                      {course.credits} cr.
+                    </Badge>
+                    <Button 
+                      size="icon" 
+                      variant="ghost" 
+                      className="h-8 w-8 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-full transition-colors"
+                      onClick={() => removeCourseFromSelection(course.id)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
                   </div>
                 </div>
               ))}
@@ -302,6 +379,7 @@ const EnrollmentComponent = () => {
           </CardContent>
         </Card>
       )}
+    </div>
 
       {/* Validation Results */}
       {validation.status && (

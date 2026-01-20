@@ -1,13 +1,4 @@
 # backend/catalogs/views.py
-# ✅ Archivo completo (catálogos + importadores + backups) con:
-# - Import PLAN (semestres por bloques + credits correctos)
-# - Import STUDENTS (crea User + rol STUDENT vía ACL real UserRole + enlaza Student.plan FK)
-# - Import GRADES (lee CALIFICACIONES.xlsx real + normaliza DNI 7/8 + enlaza Course/PlanCourse/AcademicGradeRecord)
-# - SQLite lock retry + batches (evita romper transacciones)
-#
-# ⚠️ Recomendación (settings.py):
-# DATABASES["default"]["OPTIONS"] = {"timeout": 30}
-
 from __future__ import annotations
 
 import os
@@ -29,6 +20,7 @@ from django.db.utils import OperationalError
 from django.http import Http404, HttpResponse, FileResponse
 from django.db.models import Q
 from django.contrib.auth import get_user_model
+from django.utils.crypto import get_random_string  # ✅ FIX: faltaba
 
 from openpyxl import Workbook, load_workbook
 
@@ -146,7 +138,6 @@ def _csv_bytes(rows: List[dict], headers: List[str]) -> bytes:
     w = csv.DictWriter(out, fieldnames=headers, extrasaction="ignore")
     w.writeheader()
     for r in rows:
-        # JSONFields / dicts -> string
         rr = {}
         for k in headers:
             v = r.get(k)
@@ -316,27 +307,36 @@ def _career_from_sheet_name(sheet: str) -> str:
     return MAP.get(key, raw.upper())
 
 def _normalize_semester_value(v) -> str:
-    s = "" if v is None else str(v).strip()
-    if not s:
-        return ""
-    s = s.replace(" ", "")
-    return _norm(s)
+    s = "" if v is None else str(v)
+    s = re.sub(r"\s+", "", s, flags=re.UNICODE)  # quita espacios, saltos, tabs, etc.
+    s = unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode("ascii")
+    return s.lower()
+
+
 
 def _is_semester_label(v) -> Optional[int]:
+    key = _normalize_semester_value(v)
+    if not key:
+        return None
+
     sem_map = {
         "primero": 1, "segundo": 2, "tercero": 3, "cuarto": 4, "quinto": 5,
         "sexto": 6, "septimo": 7, "octavo": 8, "noveno": 9, "decimo": 10,
+        "1": 1, "2": 2, "3": 3, "4": 4, "5": 5, "6": 6, "7": 7, "8": 8, "9": 9, "10": 10,
+        "i": 1, "ii": 2, "iii": 3, "iv": 4, "v": 5, "vi": 6, "vii": 7, "viii": 8, "ix": 9, "x": 10,
     }
-    key = _normalize_semester_value(v)
-    return sem_map.get(key)
+
+    if key in sem_map:
+        return sem_map[key]
+
+    if key.startswith("semestre"):
+        tail = key.replace("semestre", "")
+        return sem_map.get(tail)
+
+    return None
+
 
 def _read_study_plan_xlsx(file):
-    """
-    Lee plan por hojas.
-    - Detecta semestre por BLOQUES (PRIMERO..DECIMO) aunque sean celdas combinadas.
-    - Detecta columnas 'AREAS/ASIGNATURAS' y 'CRED'.
-    - Retorna dicts: {career_name, semester, course_name, credits}
-    """
     wb = load_workbook(file, data_only=True, read_only=True, keep_links=False)
     out = []
 
@@ -349,50 +349,99 @@ def _read_study_plan_xlsx(file):
         current_sem = None
         course_col = None
         cred_col = None
+        hours_col = None
         header_found = False
+
+        # en vez de cortar, solo usamos esto para “salir” si realmente ya no hay nada
         empty_streak = 0
 
         for ridx, row in enumerate(ws.iter_rows(values_only=True), start=1):
-            # 1) semestre por bloque
-            for cell in row:
-                sem = _is_semester_label(cell)
-                if sem:
-                    current_sem = sem
-                    break
+            row_norm = [(_norm(x) if x is not None else "") for x in row]
 
-            # 2) header detection
-            if not header_found:
-                row_norm = [(_norm(x) if x is not None else "") for x in row]
+            # ------------------------------------------------
+            # 1) Header: puede repetirse en medio del documento
+            # ------------------------------------------------
+            is_header_row = any(("areas" in h) or ("asignaturas" in h) for h in row_norm) and any(("cred" in h) for h in row_norm)
+            if is_header_row:
+                # Re-detectar columnas cada vez que aparezca header
+                course_col = None
+                cred_col = None
+                hours_col = None
+
                 for j, h in enumerate(row_norm):
                     if ("areas" in h) or ("asignaturas" in h):
                         course_col = j
                         break
                 for j, h in enumerate(row_norm):
-                    if "cred" in h:
+                    if ("cred" in h) or ("credito" in h) or ("creditos" in h):
                         cred_col = j
                         break
-                if course_col is not None and cred_col is not None:
-                    header_found = True
+                for j, h in enumerate(row_norm):
+                    if ("hora" in h) or ("horas" in h) or (h == "nota"):
+                        hours_col = j
+                        break
+
+
+                header_found = course_col is not None and cred_col is not None
+                empty_streak = 0
                 continue
 
-            # 3) data rows
+            # Si aún no encontramos header, seguimos
+            if not header_found:
+                continue
+
+            # ------------------------------------------------
+            # 2) Detectar semestre (P R I M E R O, NOVENO, etc.)
+            # ------------------------------------------------
+            found_sem = None
+            for cell in row:
+                sem = _is_semester_label(cell)
+                if sem:
+                    found_sem = sem
+                    break
+
+            if found_sem:
+                current_sem = int(found_sem)
+                empty_streak = 0
+                # OJO: esta fila puede traer también curso, así que NO continue
+
+            if not current_sem:
+                continue
+
+            # ------------------------------------------------
+            # 3) Leer curso
+            # ------------------------------------------------
             if course_col is None or course_col >= len(row):
                 continue
 
             course_name = "" if row[course_col] is None else str(row[course_col]).strip()
+
+            # filas completamente vacías -> solo cuenta y sigue (NO break)
             if not course_name:
-                empty_streak += 1
-                if empty_streak >= 25:
+                # si la fila está realmente vacía completa, sube contador
+                if all((c is None or str(c).strip() == "") for c in row):
+                    empty_streak += 1
+                else:
+                    empty_streak = 0
+                # si hay demasiados vacíos y ya estamos muy abajo, recién ahí cortamos
+                if empty_streak >= 250:
                     break
                 continue
+
             empty_streak = 0
+
+            # Filas que NO son cursos
+            bad = _norm(course_name)
+            if bad in ("sem", "n", "n°", "no", "numero", "areas/asignaturas", "areas / asignaturas", "asignaturas", "total", "totales"):
+                continue
 
             credits = 0
             if cred_col is not None and cred_col < len(row):
                 credits = _to_int(row[cred_col], 0) or 0
 
-            if not current_sem:
-                continue
+            hours = 0
+            if hours_col is not None and hours_col < len(row):
+                hours = _to_int(row[hours_col], 0) or 0
 
             out.append({
                 "__row__": ridx,
@@ -400,6 +449,7 @@ def _read_study_plan_xlsx(file):
                 "semester": int(current_sem),
                 "course_name": course_name,
                 "credits": int(credits),
+                "hours": int(hours),
             })
 
     return out
@@ -409,11 +459,6 @@ def _read_study_plan_xlsx(file):
 # ─────────────────────────────────────────────────────────────
 
 def _read_calificaciones_xlsx(file):
-    """
-    Lee CALIFICACIONES.xlsx real.
-    Headers esperados (flexibles):
-      NUMERO_DOCUMENTO, PERIODO, PROGRAMA, CICLO, CURSO, PROMEDIO_VIGESIMAL
-    """
     wb = load_workbook(file, data_only=True, read_only=True, keep_links=False)
     ws = wb.active
     rows = list(ws.iter_rows(values_only=True))
@@ -442,7 +487,7 @@ def _read_calificaciones_xlsx(file):
             return r[i] if i is not None and i < len(r) else None
 
         doc = "" if get(i_doc) is None else str(get(i_doc)).strip()
-        doc = re.sub(r"\.0$", "", doc)  # 7289521.0
+        doc = re.sub(r"\.0$", "", doc)
         if doc.isdigit() and len(doc) < 8:
             doc = doc.zfill(8)
 
@@ -550,48 +595,153 @@ class TeachersViewSet(viewsets.ModelViewSet):
         return list_items(self.serializer_class, self.get_queryset())
 
 # ─────────────────────────────────────────────────────────────
-# Ubigeo (demo estático)
+# Ubigeo (Perú real desde JSON) + fallback demo
 # ─────────────────────────────────────────────────────────────
+#
+# Espera un JSON en: backend/catalogs/data/ubigeo_pe.json
+# Estructura recomendada:
+# {
+#   "15": {"name":"LIMA", "provinces":{
+#      "1508":{"name":"HUAURA","districts":{"150801":"HUACHO","150802":"HUALMAY"}}
+#   }}
+# }
+#
 
-UBIGEO_DATA = {
-    "LIMA": {"LIMA": ["LIMA", "LA MOLINA", "SURCO", "MIRAFLORES"], "HUAURA": ["HUACHO", "HUALMAY"]},
-    "PIURA": {"PIURA": ["PIURA", "CASTILLA"]},
+UBIGEO_DEMO = {
+    "15": {  # Lima
+        "name": "LIMA",
+        "provinces": {
+            "1501": {"name": "LIMA", "districts": {"150101": "LIMA", "150114": "LA MOLINA", "150140": "SURCO", "150122": "MIRAFLORES"}},
+            "1508": {"name": "HUAURA", "districts": {"150801": "HUACHO", "150802": "HUALMAY"}},
+        },
+    },
+    "20": {  # Piura
+        "name": "PIURA",
+        "provinces": {
+            "2001": {"name": "PIURA", "districts": {"200101": "PIURA", "200104": "CASTILLA"}},
+        },
+    },
 }
 
-@api_view(["GET"])
-@permission_classes([IsAuthenticated])
-def ubigeo_search(request):
-    q = (request.query_params.get("q") or "").strip().upper()
-    res = []
-    if q:
-        for dep, provs in UBIGEO_DATA.items():
-            if q in dep:
-                res.append({"department": dep})
-            for prov, dists in provs.items():
-                if q in prov:
-                    res.append({"department": dep, "province": prov})
-                for dist in dists:
-                    if q in dist:
-                        res.append({"department": dep, "province": prov, "district": dist})
-    return Response(res[:50])
+_UBIGEO_CACHE: Optional[dict] = None
+
+def _load_ubigeo_pe() -> dict:
+    global _UBIGEO_CACHE
+    if isinstance(_UBIGEO_CACHE, dict):
+        return _UBIGEO_CACHE
+
+    # Intentar rutas típicas (según dónde esté corriendo BASE_DIR)
+    candidates = [
+        os.path.join(settings.BASE_DIR, "catalogs", "data", "ubigeo_pe.json"),
+        os.path.join(settings.BASE_DIR, "backend", "catalogs", "data", "ubigeo_pe.json"),
+        os.path.join(os.getcwd(), "catalogs", "data", "ubigeo_pe.json"),
+        os.path.join(os.getcwd(), "backend", "catalogs", "data", "ubigeo_pe.json"),
+    ]
+
+    last_err = None
+
+    for path in candidates:
+        try:
+            if os.path.exists(path):
+                with open(path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+
+                if isinstance(data, dict) and data:
+                    _UBIGEO_CACHE = data
+                    print(f"[UBIGEO] OK loaded: {path} (deps={len(data)})")
+                    return data
+                else:
+                    last_err = f"JSON vacío o inválido en {path}"
+        except Exception as e:
+            last_err = f"{type(e).__name__}: {e} ({path})"
+
+    print(f"[UBIGEO] FALLBACK DEMO. BASE_DIR={settings.BASE_DIR} CWD={os.getcwd()} ERR={last_err}")
+    _UBIGEO_CACHE = UBIGEO_DEMO
+    return _UBIGEO_CACHE
+    
+    EO_DEMO
+    return _UBIGEO_CACHE
+
+def _ub_name(x) -> str:
+    return (x or "").strip()
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def ubigeo_departments(request):
-    return Response(sorted(list(UBIGEO_DATA.keys())))
+    ub = _load_ubigeo_pe()
+    out = [{"code": k, "name": _ub_name(v.get("name"))} for k, v in ub.items()]
+    out.sort(key=lambda x: x["name"])
+    return Response(out)
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def ubigeo_provinces(request):
-    dep = (request.query_params.get("department") or "").upper()
-    return Response(sorted(list(UBIGEO_DATA.get(dep, {}).keys())))
+    ub = _load_ubigeo_pe()
+    dep = (request.query_params.get("department") or "").strip()
+    if dep not in ub:
+        return Response([])
+    provs = ub[dep].get("provinces") or {}
+    out = [{"code": k, "name": _ub_name(v.get("name"))} for k, v in provs.items()]
+    out.sort(key=lambda x: x["name"])
+    return Response(out)
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def ubigeo_districts(request):
-    dep = (request.query_params.get("department") or "").upper()
-    prov = (request.query_params.get("province") or "").upper()
-    return Response(sorted(UBIGEO_DATA.get(dep, {}).get(prov, [])))
+    ub = _load_ubigeo_pe()
+    dep = (request.query_params.get("department") or "").strip()
+    prov = (request.query_params.get("province") or "").strip()
+    if dep not in ub:
+        return Response([])
+    provs = ub[dep].get("provinces") or {}
+    if prov not in provs:
+        return Response([])
+    dists = provs[prov].get("districts") or {}
+    out = [{"code": k, "name": _ub_name(v)} for k, v in dists.items()]
+    out.sort(key=lambda x: x["name"])
+    return Response(out)
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def ubigeo_search(request):
+    """
+    q busca por name o code. Devuelve hasta 50 coincidencias.
+    """
+    q = (request.query_params.get("q") or "").strip()
+    if not q:
+        return Response([])
+
+    qq = _norm(q)
+    ub = _load_ubigeo_pe()
+    res = []
+
+    for dep_code, dep in ub.items():
+        dep_name = dep.get("name", "")
+        if qq in _norm(dep_name) or qq in _norm(dep_code):
+            res.append({"department": {"code": dep_code, "name": dep_name}})
+
+        provs = dep.get("provinces") or {}
+        for prov_code, prov in provs.items():
+            prov_name = prov.get("name", "")
+            if qq in _norm(prov_name) or qq in _norm(prov_code):
+                res.append({
+                    "department": {"code": dep_code, "name": dep_name},
+                    "province": {"code": prov_code, "name": prov_name},
+                })
+
+            dists = prov.get("districts") or {}
+            for dist_code, dist_name in dists.items():
+                if qq in _norm(dist_name) or qq in _norm(dist_code):
+                    res.append({
+                        "department": {"code": dep_code, "name": dep_name},
+                        "province": {"code": prov_code, "name": prov_name},
+                        "district": {"code": dist_code, "name": dist_name},
+                    })
+
+        if len(res) >= 50:
+            break
+
+    return Response(res[:50])
 
 # ─────────────────────────────────────────────────────────────
 # Institution settings + media
@@ -667,7 +817,6 @@ def imports_template(request, type: str):
         return _xlsx_response(wb, "grades_template.xlsx")
 
     if type == "plans":
-        # no hay plantilla real porque el plan viene por hojas (tu formato)
         ws.title = "info"
         ws.append(["Sube tu Plan de estudios .xlsx (con hojas por carrera)"])
         return _xlsx_response(wb, "plans_info.xlsx")
@@ -708,12 +857,6 @@ def imports_start(request, type: str):
     credentials: List[dict] = []
 
     try:
-        # ✅ NO pongas un atomic global gigante (mata sqlite + rompe por 1 error)
-        # atomic solo por batch en students
-
-        # ============================================================
-        # PLANS
-        # ============================================================
         if type == "plans":
             fname = (getattr(file, "name", "") or "").lower()
             if fname.endswith(".xls"):
@@ -726,7 +869,6 @@ def imports_start(request, type: str):
             created_courses = 0
             created_links = 0
 
-            # 1) crear careers (Academic + Admission) por hoja
             wb_tmp = load_workbook(file, read_only=True, keep_links=False)
             sheet_names = list(wb_tmp.sheetnames)
 
@@ -758,17 +900,19 @@ def imports_start(request, type: str):
                         try:
                             AdmissionCareer.objects.create(**payload)
                         except Exception:
-                            # no mates import por constraints raros
                             pass
 
-            # reset puntero
             try:
                 file.seek(0)
             except Exception:
                 pass
 
-            # 2) leer cursos reales (bloques)
             plan_rows = _read_study_plan_xlsx(file)
+            if not plan_rows:
+                errors.append("No se detectaron filas del plan (plan_rows vacío). Revisa formato: header debe contener 'AREAS/ASIGNATURAS' y 'CRED.'")
+
+            # ✅ clave: si reimportas, no mezcles basura vieja
+            cleared_plans = set()
 
             for row in plan_rows:
                 r = row.get("__row__", "?")
@@ -776,16 +920,19 @@ def imports_start(request, type: str):
                 semester = row.get("semester")
                 course_name = (row.get("course_name") or "").strip()
                 credits = int(row.get("credits") or 0)
+                hours = int(row.get("hours") or 0)
 
                 if not career_name or not course_name or not semester:
                     errors.append(f"Fila {r}: carrera/semester/curso inválidos")
                     continue
 
+                # Carrera
                 car = Career.objects.filter(name__iexact=career_name).first()
                 if not car:
                     car = Career.objects.create(name=career_name)
                     created_careers += 1
 
+                # Plan (por carrera)
                 plan, plan_created = Plan.objects.get_or_create(
                     career=car,
                     name=f"Plan {career_name}",
@@ -794,7 +941,12 @@ def imports_start(request, type: str):
                 if plan_created:
                     created_plans += 1
 
-                # Course dedupe por nombre
+                # ✅ overwrite limpio del plan SOLO una vez
+                if plan.id not in cleared_plans:
+                    PlanCourse.objects.filter(plan=plan).delete()
+                    cleared_plans.add(plan.id)
+
+                # Curso
                 course = Course.objects.filter(name__iexact=course_name).first()
                 if not course:
                     base = _slug_code(course_name, 10)
@@ -806,27 +958,41 @@ def imports_start(request, type: str):
                     course = Course.objects.create(code=code, name=course_name, credits=max(0, credits))
                     created_courses += 1
                 else:
-                    # ✅ SIEMPRE corrige credits si difiere
+                    # actualiza créditos si el excel manda valor
                     if int(credits) > 0 and int(course.credits or 0) != int(credits):
                         course.credits = int(credits)
                         course.save(update_fields=["credits"])
 
+                # ✅ PlanCourse: crear vínculo y FORZAR semestre/horas
                 pc, pc_created = PlanCourse.objects.get_or_create(
                     plan=plan,
                     course=course,
-                    defaults={"semester": max(1, int(semester)), "weekly_hours": 3, "type": "MANDATORY"},
+                    defaults={"semester": 1, "weekly_hours": 3, "type": "MANDATORY"},
                 )
+
+                pc.semester = max(1, int(semester))
+                pc.weekly_hours = max(0, int(hours)) if hours else int(pc.weekly_hours or 3)
+                pc.type = pc.type or "MANDATORY"
+                pc.save(update_fields=["semester", "weekly_hours", "type"])
+
                 if pc_created:
                     created_links += 1
-                else:
-                    # corrige semester si difiere
-                    if int(pc.semester or 0) != max(1, int(semester)):
-                        pc.semester = max(1, int(semester))
-                        pc.save(update_fields=["semester"])
 
                 imported += 1
 
-            # 3) actualizar duration_semesters en Admisión según max semester real
+            # ✅ ajustar semestres reales del plan (opcional pero recomendado)
+            for plan_id in list(cleared_plans):
+                pl = Plan.objects.filter(id=plan_id).first()
+                if not pl:
+                    continue
+                mx = (PlanCourse.objects.filter(plan_id=plan_id).aggregate(mx=models.Max("semester")).get("mx")) or 0
+                if mx > 0 and int(pl.semesters or 0) != int(mx):
+                    pl.semesters = int(mx)
+                    pl.save(update_fields=["semesters"])
+
+
+                imported += 1
+
             if AdmissionCareer is not None:
                 for car in Career.objects.all():
                     pl = Plan.objects.filter(career=car).first()
@@ -847,20 +1013,13 @@ def imports_start(request, type: str):
                 "created_links": created_links,
             }}
 
-        # ============================================================
-        # STUDENTS / COURSES / GRADES
-        # ============================================================
         elif type in ("students", "courses", "grades"):
             rows = _read_rows(file, mapping)
 
-            # ----------------------------
-            # STUDENTS
-            # ----------------------------
             if type == "students":
                 student_role, _ = _retry_db(lambda: Role.objects.get_or_create(name="STUDENT"))
                 user_fields = {f.name for f in User._meta.fields}
 
-                # info del campo email del user (si es unique)
                 def _email_field_info():
                     try:
                         f = User._meta.get_field("email")
@@ -877,16 +1036,14 @@ def imports_start(request, type: str):
                 def _safe_unique_email(username: str, email: str):
                     email = (email or "").strip().lower()
 
-                    # si viene email real, úsalo solo si no choca
                     if email:
                         conflict = User.objects.filter(email__iexact=email).exists()
                         if not conflict:
                             return email
                         errors.append(f"Email duplicado '{email}' (se usará dummy/NULL)")
 
-                    # no hay email o está duplicado
                     if EMAIL_INFO["null"]:
-                        return None  # NULL no choca unique en sqlite
+                        return None
                     if EMAIL_INFO["unique"]:
                         base = f"{username}@no-email.local"
                         e = base
@@ -904,26 +1061,16 @@ def imports_start(request, type: str):
                         u.name = full_name
 
                 def _ensure_user_for_student(st: Student, username: str, email: str, full_name: str, r: Any):
-                    """
-                    Crea o enlaza user SOLO si st.user es None.
-                    Maneja email unique.
-                    Retorna: (user, temp_password_or_none)
-                    """
-                    # ya tiene user
                     if st.user_id:
                         _retry_db(lambda: UserRole.objects.get_or_create(user_id=st.user_id, role_id=student_role.id))
                         return st.user, None
 
                     email_clean = (email or "").strip().lower()
-
-                    # buscar por username
                     user = User.objects.filter(username=username).first()
 
-                    # si no hay por username, buscar por email real (si existe)
                     if not user and email_clean:
                         user = User.objects.filter(email__iexact=email_clean).first()
 
-                    # si el user ya está enlazado a otro estudiante, no usar
                     if user and Student.objects.filter(user_id=user.id).exists():
                         errors.append(f"Fila {r}: user '{getattr(user,'username','')}' ya está enlazado a otro estudiante")
                         return None, None
@@ -931,7 +1078,6 @@ def imports_start(request, type: str):
                     temp_password = None
 
                     if not user:
-                        # username único
                         uname = username
                         k = 1
                         while User.objects.filter(username=uname).exists():
@@ -951,7 +1097,6 @@ def imports_start(request, type: str):
                         try:
                             _retry_db(lambda: user.save())
                         except IntegrityError as e:
-                            # salvavidas
                             if "email" in str(e).lower() and "email" in user_fields:
                                 user.email = _safe_unique_email(user.username, "")
                                 _retry_db(lambda: user.save())
@@ -959,7 +1104,6 @@ def imports_start(request, type: str):
                             else:
                                 raise
                     else:
-                        # update seguro
                         changed = False
                         _set_name_fields(user, full_name)
                         changed = True
@@ -983,10 +1127,8 @@ def imports_start(request, type: str):
                                 else:
                                     raise
 
-                    # rol STUDENT (ACL real)
                     _retry_db(lambda: UserRole.objects.get_or_create(user_id=user.id, role_id=student_role.id))
 
-                    # enlazar student -> user
                     st.user = user
                     _retry_db(lambda: st.save(update_fields=["user"]))
                     return user, temp_password
@@ -1023,11 +1165,9 @@ def imports_start(request, type: str):
                             discapacidad = payload["discapacidad"]
                             tipo_discapacidad = payload["tipo_discapacidad"]
 
-                            # si no vienen, quedan ""
                             email = payload.get("email", "")
                             celular = payload.get("celular", "")
 
-                            # Period catálogo
                             if periodo:
                                 y, t = _parse_period_code(periodo)
                                 if y and t:
@@ -1036,7 +1176,6 @@ def imports_start(request, type: str):
                                         defaults={"year": y, "term": t, "label": periodo, "is_active": False},
                                     ))
 
-                            # Plan FK
                             plan_obj = None
                             if programa_carrera:
                                 car, _ = _retry_db(lambda: Career.objects.get_or_create(name=programa_carrera))
@@ -1046,13 +1185,11 @@ def imports_start(request, type: str):
                                     defaults={"start_year": date.today().year, "semesters": 10},
                                 ))
 
-                            # upsert student
                             st, created = _retry_db(lambda: Student.objects.get_or_create(
                                 num_documento=num_documento,
                                 defaults={"nombres": nombres, "apellido_paterno": ap_pat, "apellido_materno": ap_mat},
                             ))
 
-                            # update always
                             st.nombres = nombres
                             st.apellido_paterno = ap_pat
                             st.apellido_materno = ap_mat
@@ -1081,7 +1218,6 @@ def imports_start(request, type: str):
                             st.celular = celular
                             st.plan = plan_obj
 
-                            # credenciales SOLO si no tiene user
                             username = num_documento
                             full_name = f"{nombres} {ap_pat} {ap_mat}".strip()
                             user, temp_password = _ensure_user_for_student(st, username, email, full_name, r)
@@ -1101,7 +1237,6 @@ def imports_start(request, type: str):
                             else:
                                 updated += 1
 
-                # parse rows to batch
                 for row in rows:
                     r = row.get("__row__", "?")
 
@@ -1143,9 +1278,10 @@ def imports_start(request, type: str):
                         "lengua": str(row.get("lengua", "")).strip(),
                         "discapacidad": str(row.get("discapacidad", "")).strip(),
                         "tipo_discapacidad": str(row.get("tipo_discapacidad", "")).strip(),
-                        # tu excel no trae -> queda ""
                         "email": str(row.get("email", "") or "").strip().lower(),
                         "celular": str(row.get("celular", "") or "").strip(),
+                        "ap_pat": ap_pat,
+                        "ap_mat": ap_mat,
                     }
 
                     buffer.append((r, payload))
@@ -1157,9 +1293,6 @@ def imports_start(request, type: str):
                     flush_batch(buffer)
                     buffer = []
 
-            # ----------------------------
-            # COURSES (manual template)
-            # ----------------------------
             elif type == "courses":
                 for row in rows:
                     r = row.get("__row__", "?")
@@ -1211,9 +1344,6 @@ def imports_start(request, type: str):
 
                     imported += 1
 
-            # ----------------------------
-            # GRADES (CALIFICACIONES.xlsx)
-            # ----------------------------
             elif type == "grades":
                 if AcademicGradeRecord is None:
                     return Response({"detail": "AcademicGradeRecord no está implementado. Agrega el modelo y migra."}, status=400)
@@ -1233,7 +1363,6 @@ def imports_start(request, type: str):
                         errors.append(f"Fila {r}: no existe alumno con Num Documento {doc}")
                         continue
 
-                    # Period catálogo si es 2024-I
                     y, t = _parse_period_code(term)
                     if y and t:
                         Period.objects.get_or_create(
@@ -1241,10 +1370,8 @@ def imports_start(request, type: str):
                             defaults={"year": y, "term": t, "label": term, "is_active": False},
                         )
 
-                    # curso por nombre (case-insensitive)
                     course = Course.objects.filter(name__iexact=course_name).first()
                     if not course:
-                        # fallback: crear curso para no perder nota
                         base = _slug_code(course_name, 10)
                         code = base
                         k = 1
@@ -1253,7 +1380,6 @@ def imports_start(request, type: str):
                             code = f"{base[:8]}{k:02d}"
                         course = Course.objects.create(code=code, name=course_name, credits=0)
 
-                    # asegurar PlanCourse si hay plan + ciclo
                     if st.plan_id and ciclo:
                         PlanCourse.objects.get_or_create(
                             plan_id=st.plan_id,
@@ -1276,7 +1402,6 @@ def imports_start(request, type: str):
         else:
             return Response({"detail": "Tipo inválido"}, status=400)
 
-        # OK
         job.status = "COMPLETED"
         if not isinstance(job.result, dict) or not job.result:
             job.result = {}

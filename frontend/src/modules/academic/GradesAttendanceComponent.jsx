@@ -1,5 +1,5 @@
 // src/pages/academic/GradesAttendanceComponent.jsx
-import React, { useState, useEffect, useContext } from "react";
+import React, { useState, useEffect, useContext, useMemo } from "react";
 import { AuthContext } from "../../context/AuthContext";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
@@ -10,7 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/ta
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "../../components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import { toast } from "sonner";
-import { Upload, Save, Send, Lock, Unlock, FileText, Users, Calendar, Clock } from "lucide-react";
+import { Upload, Save, Send, Lock, Unlock, FileText, Users, Calendar, Clock, ChevronLeft, ChevronRight } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogTrigger,
@@ -25,6 +25,79 @@ import {
 
 import { generatePDFWithPolling, generateQRWithPolling, downloadFile } from "../../utils/pdfQrPolling";
 import { Attendance, Teacher, SectionStudents, Grades, AttendanceImport } from "../../services/academic.service";
+
+/* ----------------------------- Pagination helper ----------------------------- */
+function Pagination({ page, totalPages, onPageChange, className = "" }) {
+  if (totalPages <= 1) return null;
+
+  const go = (p) => onPageChange(Math.min(Math.max(1, p), totalPages));
+
+  const nums = (() => {
+    // compacto: 1 ... (p-1) p (p+1) ... last
+    const set = new Set([1, totalPages, page - 1, page, page + 1]);
+    const arr = [...set].filter((n) => n >= 1 && n <= totalPages).sort((a, b) => a - b);
+
+    const out = [];
+    for (let i = 0; i < arr.length; i++) {
+      out.push(arr[i]);
+      if (i < arr.length - 1 && arr[i + 1] - arr[i] > 1) out.push("…");
+    }
+    return out;
+  })();
+
+  return (
+    <div className={`flex items-center justify-between gap-2 flex-wrap ${className}`}>
+      <div className="text-xs text-muted-foreground">
+        Página <strong>{page}</strong> de <strong>{totalPages}</strong>
+      </div>
+
+      <div className="flex items-center gap-2">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="rounded-xl"
+          onClick={() => go(page - 1)}
+          disabled={page <= 1}
+        >
+          <ChevronLeft className="h-4 w-4" />
+        </Button>
+
+        <div className="flex items-center gap-1">
+          {nums.map((n, idx) =>
+            n === "…" ? (
+              <span key={`dots-${idx}`} className="px-2 text-sm text-muted-foreground">
+                …
+              </span>
+            ) : (
+              <Button
+                key={n}
+                type="button"
+                variant={n === page ? "default" : "outline"}
+                size="sm"
+                className="rounded-xl min-w-[2.25rem]"
+                onClick={() => go(n)}
+              >
+                {n}
+              </Button>
+            )
+          )}
+        </div>
+
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="rounded-xl"
+          onClick={() => go(page + 1)}
+          disabled={page >= totalPages}
+        >
+          <ChevronRight className="h-4 w-4" />
+        </Button>
+      </div>
+    </div>
+  );
+}
 
 export default function GradesAttendanceComponent() {
   const { user } = useContext(AuthContext);
@@ -48,6 +121,15 @@ export default function GradesAttendanceComponent() {
   const [sessionDate, setSessionDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [currentSession, setCurrentSession] = useState(null);
   const [sessionRows, setSessionRows] = useState([]); // {student_id, status}
+
+  // ✅ PAGINACIÓN
+  const [gradesPage, setGradesPage] = useState(1);
+  const [sessionsPage, setSessionsPage] = useState(1);
+  const [takeAttPage, setTakeAttPage] = useState(1);
+
+  const gradesPageSize = 10;
+  const sessionsPageSize = 10;
+  const takeAttendancePageSize = 10;
 
   // Grade periods
   const gradePeriods = ["PARCIAL_1", "PARCIAL_2", "PARCIAL_3", "FINAL"];
@@ -89,19 +171,30 @@ export default function GradesAttendanceComponent() {
     fetchSectionStudents();
     fetchGrades();
     fetchAttendanceSessions();
+
+    // ✅ reset paginación al cambiar sección
+    setGradesPage(1);
+    setSessionsPage(1);
+    setTakeAttPage(1);
+
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedSection?.id]);
+
+  useEffect(() => {
+    // ✅ si cambias de tab, arranca desde la página 1 para evitar "vacío"
+    setGradesPage(1);
+    setSessionsPage(1);
+    setTakeAttPage(1);
+  }, [activeTab]);
 
   const fetchTeacherSections = async () => {
     try {
       const data = await Teacher.sections(user.id);
-      // ✅ DEBUG útil: mira qué llega
       console.log("Teacher.sections response:", data);
 
       const secs = data?.sections || [];
       setSections(secs);
 
-      // ✅ si ya no existe la sección elegida, reset
       setSelectedSection((prev) => {
         if (!prev?.id) return prev;
         const still = secs.find((s) => String(s.id) === String(prev.id));
@@ -150,8 +243,12 @@ export default function GradesAttendanceComponent() {
       const r = await Attendance.createSession(selectedSection.id, { date: sessionDate });
       const ses = r?.session || r;
       setCurrentSession(ses);
+
       const rows = students.map((s) => ({ student_id: s.id, status: "PRESENT" }));
       setSessionRows(rows);
+
+      setTakeAttPage(1);
+
       await fetchAttendanceSessions();
       showToast("success", "Sesión creada");
     } catch (e) {
@@ -188,7 +285,6 @@ export default function GradesAttendanceComponent() {
   };
 
   const updateGrade = (studentId, period, value) => {
-    // ✅ permite borrar (vacío) sin bloquearte
     if (value === "") {
       setGrades((prev) => ({ ...prev, [studentId]: { ...(prev[studentId] || {}), [period]: "" } }));
       return;
@@ -307,10 +403,44 @@ export default function GradesAttendanceComponent() {
     }
   };
 
+  /* ----------------------------- PAGINATED DATA ----------------------------- */
+  const gradesTotalPages = Math.max(1, Math.ceil(students.length / gradesPageSize));
+  const pagedStudentsForGrades = useMemo(() => {
+    const start = (gradesPage - 1) * gradesPageSize;
+    return students.slice(start, start + gradesPageSize);
+  }, [students, gradesPage]);
+
+  const sessionsTotalPages = Math.max(1, Math.ceil((attendanceSessions || []).length / sessionsPageSize));
+  const pagedSessions = useMemo(() => {
+    const arr = attendanceSessions || [];
+    const start = (sessionsPage - 1) * sessionsPageSize;
+    return arr.slice(start, start + sessionsPageSize);
+  }, [attendanceSessions, sessionsPage]);
+
+  const takeAttTotalPages = Math.max(1, Math.ceil(students.length / takeAttendancePageSize));
+  const pagedStudentsForAttendance = useMemo(() => {
+    const start = (takeAttPage - 1) * takeAttendancePageSize;
+    return students.slice(start, start + takeAttendancePageSize);
+  }, [students, takeAttPage]);
+
+  // ✅ clamp page si cambian listas
+  useEffect(() => {
+    if (gradesPage > gradesTotalPages) setGradesPage(gradesTotalPages);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gradesTotalPages]);
+
+  useEffect(() => {
+    if (sessionsPage > sessionsTotalPages) setSessionsPage(sessionsTotalPages);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionsTotalPages]);
+
+  useEffect(() => {
+    if (takeAttPage > takeAttTotalPages) setTakeAttPage(takeAttTotalPages);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [takeAttTotalPages]);
+
   return (
     <div className="space-y-6 pb-24 sm:pb-6">
-
-      {/* Header */}
       {/* Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h2 className="text-xl sm:text-2xl font-bold text-gray-900">
@@ -358,7 +488,6 @@ export default function GradesAttendanceComponent() {
             <TabsTrigger value="grades" className="shrink-0">Calificaciones</TabsTrigger>
             <TabsTrigger value="attendance" className="shrink-0">Asistencia</TabsTrigger>
           </TabsList>
-
 
           {/* Grades Tab */}
           <TabsContent value="grades">
@@ -441,14 +570,12 @@ export default function GradesAttendanceComponent() {
                       </AlertDialog>
                     ) : null}
 
-
                     <Button data-testid="act-generate-pdf" variant="outline" onClick={generateActaPDF} className="w-full sm:w-auto">
                       <FileText className="h-4 w-4 mr-2" />
                       Generar Acta
                     </Button>
                   </div>
                 </div>
-
               </CardHeader>
 
               <CardContent className="space-y-4">
@@ -466,7 +593,7 @@ export default function GradesAttendanceComponent() {
                       </tr>
                     </thead>
                     <tbody>
-                      {students.map((st) => {
+                      {pagedStudentsForGrades.map((st) => {
                         const sg = grades[st.id] || {};
                         return (
                           <tr key={st.id} className="border-t">
@@ -489,6 +616,7 @@ export default function GradesAttendanceComponent() {
                           </tr>
                         );
                       })}
+
                       {students.length === 0 && (
                         <tr>
                           <td className="p-3 text-center text-gray-500" colSpan={1 + gradePeriods.length}>
@@ -500,8 +628,14 @@ export default function GradesAttendanceComponent() {
                   </table>
                 </div>
 
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                {/* ✅ Paginación calificaciones */}
+                <Pagination
+                  page={gradesPage}
+                  totalPages={gradesTotalPages}
+                  onPageChange={setGradesPage}
+                />
 
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
                   <div>
                     <Label>Fecha de sesión</Label>
                     <Input type="date" value={sessionDate} onChange={(e) => setSessionDate(e.target.value)} />
@@ -524,7 +658,7 @@ export default function GradesAttendanceComponent() {
                         </tr>
                       </thead>
                       <tbody>
-                        {(attendanceSessions || []).map((s) => (
+                        {pagedSessions.map((s) => (
                           <tr key={s.id} className="border-t">
                             <td className="p-2">{s.date}</td>
                             <td className="p-2">
@@ -532,6 +666,7 @@ export default function GradesAttendanceComponent() {
                             </td>
                           </tr>
                         ))}
+
                         {(!attendanceSessions || attendanceSessions.length === 0) && (
                           <tr>
                             <td className="p-3 text-center text-gray-500" colSpan={2}>
@@ -543,6 +678,13 @@ export default function GradesAttendanceComponent() {
                     </table>
                   </div>
                 </div>
+
+                {/* ✅ Paginación sesiones */}
+                <Pagination
+                  page={sessionsPage}
+                  totalPages={sessionsTotalPages}
+                  onPageChange={setSessionsPage}
+                />
 
                 {/* Sesión actual */}
                 {currentSession && (
@@ -558,7 +700,7 @@ export default function GradesAttendanceComponent() {
                           </tr>
                         </thead>
                         <tbody>
-                          {students.map((st) => {
+                          {pagedStudentsForAttendance.map((st) => {
                             const row = sessionRows.find((r) => r.student_id === st.id) || { status: "PRESENT" };
                             return (
                               <tr key={st.id} className="border-t">
@@ -585,11 +727,19 @@ export default function GradesAttendanceComponent() {
                       </table>
                     </div>
 
+                    {/* ✅ Paginación tomando asistencia */}
+                    <Pagination
+                      page={takeAttPage}
+                      totalPages={takeAttTotalPages}
+                      onPageChange={setTakeAttPage}
+                    />
+
                     <div className="flex justify-end gap-2">
                       <Button variant="outline" onClick={saveAttendance}>
                         <Save className="h-4 w-4 mr-2" />
                         Guardar
                       </Button>
+
                       <AlertDialog>
                         <AlertDialogTrigger asChild>
                           <Button className="bg-blue-600 hover:bg-blue-700">
@@ -620,7 +770,6 @@ export default function GradesAttendanceComponent() {
                           </AlertDialogFooter>
                         </AlertDialogContent>
                       </AlertDialog>
-
                     </div>
                   </div>
                 )}
@@ -632,19 +781,36 @@ export default function GradesAttendanceComponent() {
           <TabsContent value="attendance">
             <Card>
               <CardHeader>
-                <div className="flex justify-between items-center">
-                  <div>
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                  <div className="min-w-0">
                     <CardTitle>Control de Asistencia</CardTitle>
-                    <CardDescription>
-                      Sección: {selectedSection.course_name || selectedSection.course_code} - {selectedSection.section_code || selectedSection.label}
+                    <CardDescription className="break-words">
+                      Sección: {selectedSection.course_name || selectedSection.course_code} -{" "}
+                      {selectedSection.section_code || selectedSection.label}
                     </CardDescription>
                   </div>
 
-                  <div className="flex space-x-2">
+                  <div className="flex flex-col sm:flex-row gap-2 w-full lg:w-auto">
+                    <div className="flex items-end gap-2">
+                      <div>
+                        <Label>Fecha</Label>
+                        <Input
+                          type="date"
+                          value={sessionDate}
+                          onChange={(e) => setSessionDate(e.target.value)}
+                        />
+                      </div>
+
+                      <Button onClick={createAttendanceSession} className="gap-2">
+                        <Calendar className="h-4 w-4" />
+                        Nueva sesión
+                      </Button>
+                    </div>
+
                     <Dialog open={importDialog} onOpenChange={setImportDialog}>
                       <DialogTrigger asChild>
-                        <Button data-testid="attendance-import" variant="outline">
-                          <Upload className="h-4 w-4 mr-2" />
+                        <Button data-testid="attendance-import" variant="outline" className="gap-2">
+                          <Upload className="h-4 w-4" />
                           Importar CSV
                         </Button>
                       </DialogTrigger>
@@ -652,7 +818,9 @@ export default function GradesAttendanceComponent() {
                       <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
                         <DialogHeader>
                           <DialogTitle>Importar Asistencia desde CSV</DialogTitle>
-                          <DialogDescription>Seleccione un archivo CSV con los datos de asistencia</DialogDescription>
+                          <DialogDescription>
+                            Seleccione un archivo CSV con los datos de asistencia
+                          </DialogDescription>
                         </DialogHeader>
 
                         <div className="space-y-4">
@@ -666,8 +834,8 @@ export default function GradesAttendanceComponent() {
                             />
                           </div>
 
-                          <Button onClick={importAttendanceCSV} disabled={!csvFile}>
-                            <FileText className="h-4 w-4 mr-2" />
+                          <Button onClick={importAttendanceCSV} disabled={!csvFile} className="gap-2">
+                            <FileText className="h-4 w-4" />
                             Generar Vista Previa
                           </Button>
 
@@ -688,7 +856,9 @@ export default function GradesAttendanceComponent() {
 
                           {importPreview.length > 0 && (
                             <div className="mt-4">
-                              <h4 className="font-semibold mb-2">Vista Previa ({importPreview.length} registros):</h4>
+                              <h4 className="font-semibold mb-2">
+                                Vista Previa ({importPreview.length} registros):
+                              </h4>
                               <div className="max-h-60 overflow-auto border rounded">
                                 <table className="w-full text-sm">
                                   <thead className="bg-gray-50">
@@ -722,15 +892,21 @@ export default function GradesAttendanceComponent() {
                           )}
 
                           <div className="flex justify-end space-x-2">
-                            <Button data-testid="dialog-cancel" variant="outline" onClick={() => setImportDialog(false)}>
+                            <Button
+                              data-testid="dialog-cancel"
+                              variant="outline"
+                              onClick={() => setImportDialog(false)}
+                            >
                               Cancelar
                             </Button>
+
                             <Button
                               data-testid="attendance-save"
                               onClick={saveAttendanceImport}
                               disabled={importPreview.length === 0 || importErrors.length > 0}
+                              className="gap-2"
                             >
-                              <Save className="h-4 w-4 mr-2" />
+                              <Save className="h-4 w-4" />
                               Guardar Asistencia
                             </Button>
                           </div>
@@ -741,15 +917,207 @@ export default function GradesAttendanceComponent() {
                 </div>
               </CardHeader>
 
-              <CardContent>
-                <div className="text-center py-8 text-gray-500">
-                  <Users className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                  <p>Seleccione "Importar CSV" para cargar datos de asistencia</p>
-                  <p className="text-sm mt-2">O implemente el registro manual de asistencia aquí</p>
+              <CardContent className="space-y-4">
+                {/* LISTA DE SESIONES */}
+                <div className="border rounded">
+                  <div className="p-2 font-medium bg-gray-50">Sesiones registradas</div>
+
+                  <div className="max-h-64 overflow-auto">
+                    <table className="w-full text-sm">
+                      <thead className="bg-gray-50 sticky top-0">
+                        <tr>
+                          <th className="p-2 text-left">Fecha</th>
+                          <th className="p-2 text-left">Estado</th>
+                          <th className="p-2 text-right">Acción</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {pagedSessions.map((s) => (
+                          <tr key={s.id} className="border-t">
+                            <td className="p-2">{s.date}</td>
+                            <td className="p-2">
+                              {s.is_closed ? (
+                                <Badge variant="secondary">Cerrada</Badge>
+                              ) : (
+                                <Badge>Abierta</Badge>
+                              )}
+                            </td>
+                            <td className="p-2 text-right">
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                className="rounded-xl"
+                                onClick={() => {
+                                  // ✅ Abrir sesión existente para editar / revisar
+                                  setCurrentSession(s);
+
+                                  // Si el serializer trae rows, los usamos. Si no, creamos default.
+                                  // (Tu backend hace prefetch_related("rows"), depende del serializer si los expone)
+                                  const rowsFromApi = Array.isArray(s?.rows)
+                                    ? s.rows.map((r) => ({
+                                      student_id: Number(r.student_id ?? r.student ?? r.studentId),
+                                      status: String(r.status || "PRESENT").toUpperCase(),
+                                    }))
+                                    : [];
+
+                                  const byId = new Map(rowsFromApi.map((r) => [String(r.student_id), r]));
+
+                                  const merged = students.map((st) => {
+                                    const hit = byId.get(String(st.id));
+                                    return {
+                                      student_id: st.id,
+                                      status: hit?.status || "PRESENT",
+                                    };
+                                  });
+
+                                  setSessionRows(merged);
+                                  setTakeAttPage(1);
+                                }}
+                                disabled={Boolean(s?.is_closed)}
+                                title={s?.is_closed ? "Sesión cerrada" : "Abrir sesión"}
+                              >
+                                Abrir
+                              </Button>
+                            </td>
+                          </tr>
+                        ))}
+
+                        {(!attendanceSessions || attendanceSessions.length === 0) && (
+                          <tr>
+                            <td className="p-3 text-center text-gray-500" colSpan={3}>
+                              Sin sesiones
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
+
+                {/* ✅ Paginación sesiones */}
+                <Pagination page={sessionsPage} totalPages={sessionsTotalPages} onPageChange={setSessionsPage} />
+
+                {/* SESIÓN ACTUAL (EDICIÓN) */}
+                {currentSession ? (
+                  <div className="border rounded p-3 space-y-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                      <div className="font-medium">
+                        Sesión actual — <span className="font-semibold">{currentSession.date}</span>
+                      </div>
+
+                      <div className="flex gap-2 justify-end">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="rounded-xl"
+                          onClick={() => {
+                            setCurrentSession(null);
+                            setSessionRows([]);
+                          }}
+                        >
+                          Salir
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead className="bg-gray-50">
+                          <tr>
+                            <th className="p-2 text-left">Estudiante</th>
+                            <th className="p-2 text-left">Estado</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {pagedStudentsForAttendance.map((st) => {
+                            const row =
+                              sessionRows.find((r) => r.student_id === st.id) || { status: "PRESENT" };
+
+                            return (
+                              <tr key={st.id} className="border-t">
+                                <td className="p-2">
+                                  {st.first_name} {st.last_name}
+                                </td>
+                                <td className="p-2">
+                                  <Select value={row.status} onValueChange={(v) => setRowStatus(st.id, v)}>
+                                    <SelectTrigger className="w-44">
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="PRESENT">Presente</SelectItem>
+                                      <SelectItem value="ABSENT">Ausente</SelectItem>
+                                      <SelectItem value="LATE">Tardanza</SelectItem>
+                                      <SelectItem value="EXCUSED">Justificado</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </td>
+                              </tr>
+                            );
+                          })}
+
+                          {students.length === 0 ? (
+                            <tr>
+                              <td colSpan={2} className="p-3 text-center text-gray-500">
+                                Sin estudiantes
+                              </td>
+                            </tr>
+                          ) : null}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {/* ✅ Paginación alumnos */}
+                    <Pagination page={takeAttPage} totalPages={takeAttTotalPages} onPageChange={setTakeAttPage} />
+
+                    <div className="flex flex-col sm:flex-row justify-end gap-2">
+                      <Button variant="outline" onClick={saveAttendance} className="gap-2">
+                        <Save className="h-4 w-4" />
+                        Guardar
+                      </Button>
+
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button className="bg-blue-600 hover:bg-blue-700 gap-2">
+                            <Lock className="h-4 w-4" />
+                            Cerrar sesión
+                          </Button>
+                        </AlertDialogTrigger>
+
+                        <AlertDialogContent className="max-w-[92vw] sm:max-w-md">
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>¿Cerrar sesión de asistencia?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              Se guardará la asistencia y la sesión quedará cerrada. Luego ya no podrás editarla.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+
+                          <AlertDialogFooter className="flex-col sm:flex-row gap-2">
+                            <AlertDialogCancel className="w-full sm:w-auto">
+                              Cancelar
+                            </AlertDialogCancel>
+
+                            <AlertDialogAction className="w-full sm:w-auto" onClick={closeAttendance}>
+                              Sí, cerrar
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-center py-8 text-gray-500 border rounded-2xl">
+                    <Users className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                    <p className="font-medium">No hay sesión activa</p>
+                    <p className="text-sm mt-1">
+                      Crea una nueva sesión o abre una sesión existente (si está abierta).
+                    </p>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
+
         </Tabs>
       )}
 

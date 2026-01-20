@@ -2,6 +2,7 @@
 from django.contrib.auth import get_user_model
 from django.db import transaction, IntegrityError
 from rest_framework import serializers
+from catalogs.models import Campus, Classroom
 
 from .models import (
     Period, Campus, Classroom, Teacher,
@@ -25,16 +26,13 @@ class CampusSerializer(serializers.ModelSerializer):
 
 
 class ClassroomSerializer(serializers.ModelSerializer):
-    """
-    ✅ FIX 400:
-    Frontend manda campus_id, el modelo tiene FK "campus".
-    """
     campus_id = serializers.PrimaryKeyRelatedField(
         source="campus",
         queryset=Campus.objects.all(),
         write_only=True,
         required=True
     )
+    campus = CampusSerializer(read_only=True)
 
     class Meta:
         model = Classroom

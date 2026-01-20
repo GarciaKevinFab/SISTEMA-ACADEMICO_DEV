@@ -536,7 +536,7 @@ const ReceiptsDashboard = () => {
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="font-medium">Filtros</h3>
                   <Button variant="outline" size="sm" onClick={clearFilters}>
-                    Limpiar
+                    Buscar
                   </Button>
                 </div>
 

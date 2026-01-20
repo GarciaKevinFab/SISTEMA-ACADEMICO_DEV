@@ -3,13 +3,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "../../utils/safeToast";
 import { useAuth } from "../../context/AuthContext";
 
-import {
-    Card,
-    CardHeader,
-    CardTitle,
-    CardDescription,
-    CardContent,
-} from "../../components/ui/card";
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
@@ -46,6 +40,17 @@ import {
     Image as ImageIcon,
     FileSpreadsheet,
     DatabaseZap,
+    Plus,
+    ChevronRight,
+    AlertCircle,
+    MapPin,
+    Image,
+    Save,
+    Trash2,
+    CreditCard,
+    UserPlus,
+    Mail,
+    Phone,
 } from "lucide-react";
 
 import {
@@ -71,14 +76,14 @@ import {
     AlertDialogAction,
 } from "@/components/ui/alert-dialog";
 
-// ------- helpers -------
+// ===============================================================
+// Helpers
+// ===============================================================
 function formatApiError(err, fallback = "Ocurrió un error") {
     const data = err?.response?.data;
 
-    // DRF: {"field":["msg"]} o {"detail":"..."}
     if (data?.detail) return typeof data.detail === "string" ? data.detail : JSON.stringify(data.detail);
 
-    // DRF field errors
     if (data && typeof data === "object") {
         const firstKey = Object.keys(data)[0];
         if (firstKey) {
@@ -93,7 +98,6 @@ function formatApiError(err, fallback = "Ocurrió un error") {
     return fallback;
 }
 
-// ✅ helper para descargar blob y guardar archivo
 function saveBlobAsFile(blob, filename) {
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -110,6 +114,18 @@ function filenameFromContentDisposition(cd, fallback) {
     const m = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/.exec(cd);
     if (!m?.[1]) return fallback;
     return m[1].replace(/['"]/g, "").trim() || fallback;
+}
+
+// Normaliza lista de ubigeo (backend puede mandar strings o {code,name})
+function normalizeUbigeoList(list) {
+    const arr = list?.items ?? list ?? [];
+    if (!Array.isArray(arr)) return [];
+    return arr.map((x) => {
+        if (typeof x === "string") return { code: x, name: x };
+        const code = String(x?.code ?? x?.id ?? x?.value ?? x?.name ?? "");
+        const name = String(x?.name ?? x?.label ?? x?.value ?? x?.code ?? "");
+        return { code, name };
+    }).filter((x) => x.code);
 }
 
 const Field = ({ label, children }) => (
@@ -129,9 +145,9 @@ const Section = ({ title, desc, children }) => (
     </Card>
 );
 
-// ===================================================================
+// ===============================================================
 // Periodos Académicos
-// ===================================================================
+// ===============================================================
 const PeriodsSection = () => {
     const [rows, setRows] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -200,7 +216,6 @@ const PeriodsSection = () => {
         }
     };
 
-
     const toggleActive = async (r) => {
         try {
             await Periods.setActive(r.id, !r.is_active);
@@ -213,14 +228,16 @@ const PeriodsSection = () => {
     return (
         <Section
             title={
-                <>
-                    <CalendarDays className="h-5 w-5 text-blue-600" />
-                    Periodos académicos
-                </>
+                <div className="flex items-center gap-2">
+                    <div className="p-2 bg-blue-100 rounded-lg">
+                        <CalendarDays className="h-5 w-5 text-blue-600" />
+                    </div>
+                    <span className="text-xl font-bold text-gray-800">Periodos académicos</span>
+                </div>
             }
-            desc="Defina periodos (año, término, fechas) y marque el activo."
+            desc="Defina los ciclos académicos (año, término y fechas) y establezca el vigente."
         >
-            <div className="flex justify-end mb-3">
+            <div className="flex justify-end mb-6">
                 <Dialog
                     open={open}
                     onOpenChange={(v) => {
@@ -229,26 +246,39 @@ const PeriodsSection = () => {
                     }}
                 >
                     <DialogTrigger asChild>
-                        <Button className="bg-blue-600 hover:bg-blue-700 rounded-xl">
+                        <Button className="bg-blue-600 hover:bg-blue-700 text-white rounded-xl px-5 shadow-md hover:shadow-lg transition-all flex items-center gap-2">
+                            <Plus className="h-4 w-4" />
                             Nuevo periodo
                         </Button>
                     </DialogTrigger>
 
-                    <DialogContent className="max-w-lg">
-                        <DialogHeader>
-                            <DialogTitle>{editing ? "Editar periodo" : "Nuevo periodo"}</DialogTitle>
-                            <DialogDescription>El código suele ser algo como 2024-I</DialogDescription>
+                    <DialogContent className="max-w-lg rounded-2xl p-6">
+                        <DialogHeader className="mb-4">
+                            <DialogTitle className="text-2xl font-bold text-slate-800">
+                                {editing ? "Editar periodo" : "Crear nuevo periodo"}
+                            </DialogTitle>
+                            <DialogDescription className="text-slate-500">
+                                Ingrese los detalles del ciclo. El código se genera usualmente como Año-Término (ej. 2024-I).
+                            </DialogDescription>
                         </DialogHeader>
 
-                        <div className="space-y-3">
-                            <Field label="Código *">
-                                <Input value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} />
-                            </Field>
+                        <div className="space-y-5">
+                            <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
+                                <Field label="Código del Periodo *">
+                                    <Input
+                                        className="bg-white border-slate-200 focus:border-blue-500 transition-colors font-medium"
+                                        placeholder="Ej: 2024-I"
+                                        value={form.code}
+                                        onChange={(e) => setForm({ ...form, code: e.target.value })}
+                                    />
+                                </Field>
+                            </div>
 
-                            <div className="grid grid-cols-2 gap-3">
+                            <div className="grid grid-cols-2 gap-4">
                                 <Field label="Año *">
                                     <Input
                                         type="number"
+                                        className="rounded-xl border-slate-200"
                                         value={form.year}
                                         onChange={(e) => setForm({ ...form, year: e.target.value })}
                                     />
@@ -256,51 +286,64 @@ const PeriodsSection = () => {
 
                                 <Field label="Término *">
                                     <Select value={form.term} onValueChange={(v) => setForm({ ...form, term: v })}>
-                                        <SelectTrigger>
-                                            <SelectValue />
+                                        <SelectTrigger className="rounded-xl border-slate-200">
+                                            <SelectValue placeholder="Semestre" />
                                         </SelectTrigger>
                                         <SelectContent>
-                                            <SelectItem value="I">I</SelectItem>
-                                            <SelectItem value="II">II</SelectItem>
-                                            <SelectItem value="III">III</SelectItem>
+                                            <SelectItem value="I">Semestre I</SelectItem>
+                                            <SelectItem value="II">Semestre II</SelectItem>
+                                            <SelectItem value="III">Verano / III</SelectItem>
                                         </SelectContent>
                                     </Select>
                                 </Field>
                             </div>
 
-                            <div className="grid grid-cols-2 gap-3">
-                                <Field label="Inicio">
+                            <div className="grid grid-cols-2 gap-4">
+                                <Field label="Fecha Inicio">
                                     <Input
                                         type="date"
+                                        className="rounded-xl border-slate-200"
                                         value={form.start_date}
                                         onChange={(e) => setForm({ ...form, start_date: e.target.value })}
                                     />
                                 </Field>
-                                <Field label="Fin">
+                                <Field label="Fecha Fin">
                                     <Input
                                         type="date"
+                                        className="rounded-xl border-slate-200"
                                         value={form.end_date}
                                         onChange={(e) => setForm({ ...form, end_date: e.target.value })}
                                     />
                                 </Field>
                             </div>
 
-                            <div className="flex items-center gap-2">
+                            <div
+                                className="flex items-center gap-3 p-3 border rounded-xl hover:bg-slate-50 transition-colors cursor-pointer"
+                                onClick={() => setForm({ ...form, is_active: !form.is_active })}
+                            >
                                 <input
                                     id="p-active"
                                     type="checkbox"
+                                    className="w-5 h-5 text-blue-600 rounded focus:ring-blue-500 border-gray-300"
                                     checked={!!form.is_active}
                                     onChange={(e) => setForm({ ...form, is_active: e.target.checked })}
+                                    onClick={(e) => e.stopPropagation()}
                                 />
-                                <Label htmlFor="p-active">Activo</Label>
+                                <Label htmlFor="p-active" className="cursor-pointer font-medium text-slate-700">
+                                    Establecer como periodo vigente
+                                </Label>
                             </div>
 
-                            <div className="flex justify-end gap-2">
-                                <Button variant="outline" onClick={() => setOpen(false)} className="rounded-xl">
+                            <div className="flex justify-end gap-3 pt-4 border-t">
+                                <Button
+                                    variant="outline"
+                                    onClick={() => setOpen(false)}
+                                    className="rounded-xl px-4 border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                                >
                                     Cancelar
                                 </Button>
-                                <Button onClick={save} className="rounded-xl">
-                                    Guardar
+                                <Button onClick={save} className="rounded-xl px-6 bg-blue-600 hover:bg-blue-700 shadow-md">
+                                    Guardar cambios
                                 </Button>
                             </div>
                         </div>
@@ -308,86 +351,91 @@ const PeriodsSection = () => {
                 </Dialog>
             </div>
 
-            <Card className="border shadow-sm rounded-2xl">
+            <Card className="border border-slate-200 shadow-sm rounded-2xl overflow-hidden bg-white">
                 <CardContent className="p-0">
                     {loading ? (
-                        <div className="flex justify-center py-10">
-                            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600" />
+                        <div className="flex flex-col items-center justify-center py-16 space-y-4">
+                            <div className="animate-spin rounded-full h-10 w-10 border-4 border-slate-100 border-t-blue-600" />
+                            <p className="text-sm text-slate-400 font-medium">Cargando periodos...</p>
                         </div>
                     ) : (
-                        <div
-                            className="w-full relative border rounded-md"
-                            style={{
-                                display: "block",
-                                maxHeight: "250px",
-                                overflowY: "auto",
-                                scrollbarWidth: "thin",
-                            }}
-                        >
+                        <div className="w-full relative" style={{ display: "block", maxHeight: "350px", overflowY: "auto", scrollbarWidth: "thin" }}>
                             <table className="w-full text-sm text-left border-collapse">
                                 <thead
-                                    className="bg-gray-100 text-xs text-gray-700 uppercase"
-                                    style={{ position: "sticky", top: 0, zIndex: 10, backgroundColor: "#f3f4f6" }}
+                                    className="bg-slate-50/90 backdrop-blur-sm text-xs font-semibold text-slate-500 uppercase tracking-wider"
+                                    style={{ position: "sticky", top: 0, zIndex: 10 }}
                                 >
                                     <tr>
-                                        <th className="px-6 py-3 border-b">Código</th>
-                                        <th className="px-6 py-3 border-b">Año</th>
-                                        <th className="px-6 py-3 border-b">Término</th>
-                                        <th className="px-6 py-3 border-b">Fechas</th>
-                                        <th className="px-6 py-3 border-b">Estado</th>
-                                        <th className="px-6 py-3 border-b">Acciones</th>
+                                        <th className="px-6 py-4 border-b border-slate-100">Código</th>
+                                        <th className="px-6 py-4 border-b border-slate-100">Año / Término</th>
+                                        <th className="px-6 py-4 border-b border-slate-100">Duración</th>
+                                        <th className="px-6 py-4 border-b border-slate-100 text-center">Estado</th>
+                                        <th className="px-6 py-4 border-b border-slate-100 text-right">Acciones</th>
                                     </tr>
                                 </thead>
 
-                                <tbody className="divide-y divide-gray-200">
+                                <tbody className="divide-y divide-slate-100">
                                     {rows.map((r) => (
-                                        <tr key={r.id} className="bg-white hover:bg-gray-50">
-                                            <td className="px-6 py-3 font-medium text-gray-900">{r.code}</td>
-                                            <td className="px-6 py-3">{r.year}</td>
-                                            <td className="px-6 py-3">{r.term}</td>
-                                            <td className="px-6 py-3 text-gray-500">
-                                                {(r.start_date || "-")} — {(r.end_date || "-")}
+                                        <tr key={r.id} className="bg-white hover:bg-slate-50/80 transition-colors group">
+                                            <td className="px-6 py-4">
+                                                <div className="font-bold text-slate-800 text-base">{r.code}</div>
                                             </td>
-                                            <td className="px-6 py-3">
+                                            <td className="px-6 py-4 text-slate-600">
+                                                {r.year} <span className="text-slate-300 mx-1">|</span> {r.term}
+                                            </td>
+                                            <td className="px-6 py-4">
+                                                <div className="flex flex-col text-xs text-slate-500">
+                                                    <span className="font-medium text-slate-700 mb-0.5">Inicio: {r.start_date || "--"}</span>
+                                                    <span>Fin: {r.end_date || "--"}</span>
+                                                </div>
+                                            </td>
+                                            <td className="px-6 py-4 text-center">
                                                 {r.is_active ? (
-                                                    <Badge className="bg-green-600">Activo</Badge>
+                                                    <Badge className="bg-green-100 text-green-700 hover:bg-green-200 border-0 px-3 py-1 rounded-full shadow-sm">
+                                                        Vigente
+                                                    </Badge>
                                                 ) : (
-                                                    <Badge variant="secondary">Inactivo</Badge>
+                                                    <Badge variant="secondary" className="bg-slate-100 text-slate-500 border-0 px-3 py-1 rounded-full">
+                                                        Histórico
+                                                    </Badge>
                                                 )}
                                             </td>
-                                            <td className="px-6 py-3">
-                                                <div className="flex gap-2">
+                                            <td className="px-6 py-4">
+                                                <div className="flex items-center justify-end gap-1 opacity-80 group-hover:opacity-100 transition-opacity">
                                                     <Button
                                                         size="sm"
                                                         variant="ghost"
-                                                        className="h-8 w-8 p-0"
+                                                        className={`h-8 px-3 text-xs font-medium rounded-lg mr-2 ${r.is_active
+                                                            ? "text-orange-600 hover:text-orange-700 hover:bg-orange-50"
+                                                            : "text-green-600 hover:text-green-700 hover:bg-green-50"
+                                                            }`}
+                                                        onClick={() => toggleActive(r)}
+                                                    >
+                                                        {r.is_active ? "Cerrar" : "Activar"}
+                                                    </Button>
+
+                                                    <Button
+                                                        size="icon"
+                                                        variant="ghost"
+                                                        className="h-8 w-8 rounded-full text-slate-400 hover:text-blue-600 hover:bg-blue-50"
                                                         onClick={() => {
                                                             setEditing(r);
                                                             setForm({ ...r });
                                                             setOpen(true);
                                                         }}
                                                     >
-                                                        <span className="sr-only">Editar</span>
                                                         <Settings className="h-4 w-4" />
+                                                        <span className="sr-only">Editar</span>
                                                     </Button>
 
                                                     <Button
-                                                        size="sm"
+                                                        size="icon"
                                                         variant="ghost"
-                                                        className="h-8 w-8 p-0 text-red-600"
+                                                        className="h-8 w-8 rounded-full text-slate-400 hover:text-red-600 hover:bg-red-50"
                                                         onClick={() => remove(r.id)}
                                                     >
-                                                        <span className="sr-only">Eliminar</span>
                                                         <XCircle className="h-4 w-4" />
-                                                    </Button>
-
-                                                    <Button
-                                                        size="sm"
-                                                        variant="outline"
-                                                        className="h-8 text-xs px-2"
-                                                        onClick={() => toggleActive(r)}
-                                                    >
-                                                        {r.is_active ? "Desactivar" : "Activar"}
+                                                        <span className="sr-only">Eliminar</span>
                                                     </Button>
                                                 </div>
                                             </td>
@@ -396,8 +444,12 @@ const PeriodsSection = () => {
 
                                     {rows.length === 0 && (
                                         <tr>
-                                            <td colSpan="6" className="text-center py-10 text-gray-500">
-                                                No hay periodos registrados
+                                            <td colSpan="5" className="py-12 text-center">
+                                                <div className="flex flex-col items-center justify-center text-slate-400">
+                                                    <CalendarDays className="h-12 w-12 mb-3 opacity-20" />
+                                                    <p className="text-lg font-medium text-slate-500">No hay periodos registrados</p>
+                                                    <p className="text-sm">Comience creando uno nuevo con el botón superior.</p>
+                                                </div>
                                             </td>
                                         </tr>
                                     )}
@@ -411,9 +463,9 @@ const PeriodsSection = () => {
     );
 };
 
-// ===================================================================
+// ===============================================================
 // Sedes & Aulas
-// ===================================================================
+// ===============================================================
 const CampusesSection = () => {
     const [campuses, setCampuses] = useState([]);
     const [classrooms, setClassrooms] = useState([]);
@@ -423,8 +475,21 @@ const CampusesSection = () => {
     const [openCampus, setOpenCampus] = useState(false);
     const [openClass, setOpenClass] = useState(false);
 
+    const [editingCampus, setEditingCampus] = useState(null);
+    const [editingClass, setEditingClass] = useState(null);
+
     const [campusForm, setCampusForm] = useState({ code: "", name: "", address: "" });
     const [classForm, setClassForm] = useState({ code: "", name: "", capacity: 30, campus_id: "" });
+
+    const resetCampusForm = () => {
+        setEditingCampus(null);
+        setCampusForm({ code: "", name: "", address: "" });
+    };
+
+    const resetClassForm = () => {
+        setEditingClass(null);
+        setClassForm({ code: "", name: "", capacity: 30, campus_id: "" });
+    };
 
     const load = useCallback(async () => {
         try {
@@ -432,7 +497,11 @@ const CampusesSection = () => {
             const cs = await Campuses.list();
             const arr = cs?.items ?? cs ?? [];
             setCampuses(arr);
+
             if (!selCampus && arr[0]) setSelCampus(String(arr[0].id));
+            if (selCampus && !arr.some((x) => String(x.id) === String(selCampus))) {
+                setSelCampus(arr[0] ? String(arr[0].id) : "");
+            }
         } catch (e) {
             toast.error(formatApiError(e));
         } finally {
@@ -452,21 +521,56 @@ const CampusesSection = () => {
     useEffect(() => { load(); }, [load]);
     useEffect(() => { if (selCampus) loadClassrooms(); }, [loadClassrooms, selCampus]);
 
+    // ----- SEDES -----
+    const onEditCampus = (c) => {
+        setEditingCampus(c);
+        setCampusForm({ code: c.code || "", name: c.name || "", address: c.address || "" });
+        setOpenCampus(true);
+    };
+
     const saveCampus = async () => {
         try {
             if (!campusForm.code?.trim()) return toast.error("Código de sede es requerido");
             if (!campusForm.name?.trim()) return toast.error("Nombre de sede es requerido");
 
-            await Campuses.create(campusForm);
+            if (editingCampus?.id) {
+                await Campuses.update(editingCampus.id, campusForm);
+                toast.success("Sede actualizada");
+            } else {
+                await Campuses.create(campusForm);
+                toast.success("Sede creada");
+            }
+
             setOpenCampus(false);
-            setCampusForm({ code: "", name: "", address: "" });
+            resetCampusForm();
             load();
         } catch (e) {
             toast.error(formatApiError(e));
         }
     };
 
-    // backend espera "campus" (FK), no "campus_id"
+    const removeCampus = async (c) => {
+        try {
+            await Campuses.remove(c.id);
+            toast.success("Sede eliminada");
+            await load();
+        } catch (e) {
+            toast.error(formatApiError(e));
+        }
+    };
+
+    // ----- AULAS -----
+    const onEditClassroom = (a) => {
+        setEditingClass(a);
+        setClassForm({
+            code: a.code || "",
+            name: a.name || "",
+            capacity: a.capacity ?? 30,
+            campus_id: String(a.campus_id || selCampus || ""),
+        });
+        setOpenClass(true);
+    };
+
     const saveClass = async () => {
         try {
             if (!classForm.code?.trim()) return toast.error("Código de aula es requerido");
@@ -479,15 +583,30 @@ const CampusesSection = () => {
                 code: classForm.code,
                 name: classForm.name,
                 capacity: Number(classForm.capacity || 0),
-                campus: campusPk,
+                campus_id: campusPk,
             };
 
-            await Classrooms.create(payload);
+            if (editingClass?.id) {
+                await Classrooms.update(editingClass.id, payload);
+                toast.success("Aula actualizada");
+            } else {
+                await Classrooms.create(payload);
+                toast.success("Aula creada");
+            }
 
             setOpenClass(false);
-            setClassForm({ code: "", name: "", capacity: 30, campus_id: "" });
+            resetClassForm();
             loadClassrooms();
-            toast.success("Aula creada");
+        } catch (e) {
+            toast.error(formatApiError(e));
+        }
+    };
+
+    const removeClassroom = async (a) => {
+        try {
+            await Classrooms.remove(a.id);
+            toast.success("Aula eliminada");
+            loadClassrooms();
         } catch (e) {
             toast.error(formatApiError(e));
         }
@@ -496,155 +615,389 @@ const CampusesSection = () => {
     return (
         <Section
             title={
-                <>
-                    <Building2 className="h-5 w-5 text-blue-600" />
-                    Sedes & Aulas
-                </>
+                <div className="flex items-center gap-2">
+                    <div className="p-2 bg-blue-100 rounded-lg">
+                        <Building2 className="h-5 w-5 text-blue-600" />
+                    </div>
+                    <span className="text-xl font-bold text-gray-800">Sedes & Aulas</span>
+                </div>
             }
-            desc="Administre sedes (campus) y sus aulas físicas."
+            desc="Administre las sedes (campus) y sus respectivas aulas físicas."
         >
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                {/* Sedes */}
-                <Card className="lg:col-span-1 rounded-2xl">
-                    <CardHeader className="flex flex-row items-center justify-between">
-                        <div>
-                            <CardTitle>Sedes</CardTitle>
-                            <CardDescription>Ubicaciones de la institución</CardDescription>
-                        </div>
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                {/* SEDES */}
+                <Card className="lg:col-span-1 rounded-2xl border-slate-200 shadow-sm flex flex-col h-full bg-white">
+                    <CardHeader className="border-b border-slate-100 bg-slate-50/50 pb-4">
+                        <div className="flex flex-row items-center justify-between">
+                            <div>
+                                <CardTitle className="text-lg text-slate-800">Sedes</CardTitle>
+                                <CardDescription className="text-xs">Campus disponibles</CardDescription>
+                            </div>
 
-                        <Dialog open={openCampus} onOpenChange={setOpenCampus}>
-                            <DialogTrigger asChild>
-                                <Button size="sm" className="rounded-xl">Nueva sede</Button>
-                            </DialogTrigger>
-                            <DialogContent>
-                                <DialogHeader>
-                                    <DialogTitle>Nueva sede</DialogTitle>
-                                </DialogHeader>
-                                <div className="space-y-3">
-                                    <Field label="Código *">
-                                        <Input value={campusForm.code} onChange={(e) => setCampusForm({ ...campusForm, code: e.target.value })} />
-                                    </Field>
-                                    <Field label="Nombre *">
-                                        <Input value={campusForm.name} onChange={(e) => setCampusForm({ ...campusForm, name: e.target.value })} />
-                                    </Field>
-                                    <Field label="Dirección">
-                                        <Input value={campusForm.address} onChange={(e) => setCampusForm({ ...campusForm, address: e.target.value })} />
-                                    </Field>
-                                    <div className="flex justify-end">
-                                        <Button onClick={saveCampus} className="rounded-xl">Guardar</Button>
-                                    </div>
-                                </div>
-                            </DialogContent>
-                        </Dialog>
-                    </CardHeader>
+                            <Dialog
+                                open={openCampus}
+                                onOpenChange={(v) => {
+                                    setOpenCampus(v);
+                                    if (!v) resetCampusForm();
+                                }}
+                            >
+                                <DialogTrigger asChild>
+                                    <Button
+                                        size="sm"
+                                        variant="outline"
+                                        className="h-8 rounded-lg border-slate-300 text-slate-600 hover:text-blue-600 hover:border-blue-200 hover:bg-blue-50"
+                                        onClick={() => setEditingCampus(null)}
+                                    >
+                                        <Plus className="h-3.5 w-3.5 mr-1" /> Nueva
+                                    </Button>
+                                </DialogTrigger>
 
-                    <CardContent className="space-y-2">
-                        {loading ? (
-                            <div className="text-sm text-gray-500">Cargando…</div>
-                        ) : (
-                            campuses.map((c) => (
-                                <Button
-                                    key={c.id}
-                                    variant={String(c.id) === selCampus ? "default" : "outline"}
-                                    className="w-full justify-start rounded-xl"
-                                    onClick={() => setSelCampus(String(c.id))}
-                                >
-                                    <Landmark className="h-4 w-4 mr-2" />
-                                    {c.name}
-                                </Button>
-                            ))
-                        )}
-                        {campuses.length === 0 && <div className="text-sm text-gray-500">Sin sedes</div>}
-                    </CardContent>
-                </Card>
+                                <DialogContent className="rounded-2xl sm:max-w-md">
+                                    <DialogHeader>
+                                        <DialogTitle>{editingCampus ? "Editar sede" : "Registrar nueva sede"}</DialogTitle>
+                                        <DialogDescription>Ingrese los datos de la ubicación.</DialogDescription>
+                                    </DialogHeader>
 
-                {/* Aulas */}
-                <Card className="lg:col-span-2 rounded-2xl">
-                    <CardHeader className="flex items-center justify-between">
-                        <div>
-                            <CardTitle>Aulas</CardTitle>
-                            <CardDescription>
-                                {selCampus
-                                    ? `Sede seleccionada: ${campuses.find((x) => String(x.id) === selCampus)?.name}`
-                                    : "Seleccione una sede"}
-                            </CardDescription>
-                        </div>
-
-                        <Dialog open={openClass} onOpenChange={setOpenClass}>
-                            <DialogTrigger asChild>
-                                <Button size="sm" disabled={!selCampus} className="rounded-xl">Nueva aula</Button>
-                            </DialogTrigger>
-                            <DialogContent>
-                                <DialogHeader>
-                                    <DialogTitle>Nueva aula</DialogTitle>
-                                </DialogHeader>
-                                <div className="space-y-3">
-                                    <Field label="Código *">
-                                        <Input value={classForm.code} onChange={(e) => setClassForm({ ...classForm, code: e.target.value })} />
-                                    </Field>
-                                    <Field label="Nombre *">
-                                        <Input value={classForm.name} onChange={(e) => setClassForm({ ...classForm, name: e.target.value })} />
-                                    </Field>
-
-                                    <div className="grid grid-cols-2 gap-3">
-                                        <Field label="Capacidad">
+                                    <div className="space-y-4 py-2">
+                                        <Field label="Código *">
                                             <Input
-                                                type="number"
-                                                value={classForm.capacity}
-                                                onChange={(e) =>
-                                                    setClassForm({ ...classForm, capacity: parseInt(e.target.value || "0", 10) })
-                                                }
+                                                className="rounded-xl bg-slate-50 focus:bg-white transition-colors"
+                                                placeholder="Ej. LIM-01"
+                                                value={campusForm.code}
+                                                onChange={(e) => setCampusForm({ ...campusForm, code: e.target.value })}
                                             />
                                         </Field>
 
-                                        <Field label="Sede">
-                                            <Select
-                                                value={classForm.campus_id || selCampus}
-                                                onValueChange={(v) => setClassForm({ ...classForm, campus_id: v })}
-                                            >
-                                                <SelectTrigger>
-                                                    <SelectValue />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    {campuses.map((c) => (
-                                                        <SelectItem key={c.id} value={String(c.id)}>
-                                                            {c.name}
-                                                        </SelectItem>
-                                                    ))}
-                                                </SelectContent>
-                                            </Select>
+                                        <Field label="Nombre *">
+                                            <Input
+                                                className="rounded-xl bg-slate-50 focus:bg-white transition-colors"
+                                                placeholder="Ej. Campus Central"
+                                                value={campusForm.name}
+                                                onChange={(e) => setCampusForm({ ...campusForm, name: e.target.value })}
+                                            />
                                         </Field>
-                                    </div>
 
-                                    <div className="flex justify-end">
-                                        <Button onClick={saveClass} className="rounded-xl">Guardar</Button>
+                                        <Field label="Dirección">
+                                            <Input
+                                                className="rounded-xl bg-slate-50 focus:bg-white transition-colors"
+                                                placeholder="Av. Principal 123..."
+                                                value={campusForm.address}
+                                                onChange={(e) => setCampusForm({ ...campusForm, address: e.target.value })}
+                                            />
+                                        </Field>
+
+                                        <div className="flex justify-end gap-2 pt-2">
+                                            <Button variant="outline" className="rounded-xl" onClick={() => setOpenCampus(false)}>
+                                                Cancelar
+                                            </Button>
+                                            <Button onClick={saveCampus} className="rounded-xl bg-blue-600 hover:bg-blue-700 shadow-md">
+                                                {editingCampus ? "Guardar cambios" : "Guardar Sede"}
+                                            </Button>
+                                        </div>
                                     </div>
-                                </div>
-                            </DialogContent>
-                        </Dialog>
+                                </DialogContent>
+                            </Dialog>
+                        </div>
                     </CardHeader>
 
-                    <CardContent className="overflow-x-auto">
-                        <table className="w-full">
-                            <thead className="bg-gray-50 border-b">
+                    <CardContent className="flex-1 p-3 overflow-y-auto max-h-[500px] space-y-2 bg-slate-50/30">
+                        {loading ? (
+                            <div className="flex flex-col items-center justify-center py-8 text-slate-400">
+                                <div className="animate-spin rounded-full h-6 w-6 border-2 border-slate-200 border-t-blue-500 mb-2" />
+                                <span className="text-xs">Cargando sedes...</span>
+                            </div>
+                        ) : (
+                            campuses.map((c) => {
+                                const isSelected = String(c.id) === String(selCampus);
+
+                                // ✅ FIX: ya NO usamos <Button> contenedor para evitar <button> dentro de <button>
+                                return (
+                                    <div
+                                        key={c.id}
+                                        role="button"
+                                        tabIndex={0}
+                                        onClick={() => setSelCampus(String(c.id))}
+                                        onKeyDown={(e) => {
+                                            if (e.key === "Enter" || e.key === " ") setSelCampus(String(c.id));
+                                        }}
+                                        className={`group w-full rounded-xl px-4 py-4 text-left transition-all border cursor-pointer select-none flex items-center gap-3 ${isSelected
+                                            ? "bg-blue-50 border-blue-200 text-blue-700 shadow-sm"
+                                            : "bg-white border-transparent hover:bg-slate-100 text-slate-600 hover:border-slate-200"
+                                            }`}
+                                    >
+                                        <div className={`p-2 rounded-lg ${isSelected ? "bg-blue-100 text-blue-600" : "bg-slate-100 text-slate-400"}`}>
+                                            <Landmark className="h-5 w-5" />
+                                        </div>
+
+                                        <div className="flex flex-col overflow-hidden flex-1">
+                                            <span className="font-semibold truncate">{c.name}</span>
+                                            <span className="text-[10px] opacity-70 truncate">{c.address || "Sin dirección"}</span>
+                                        </div>
+
+                                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                            <Button
+                                                size="icon"
+                                                variant="ghost"
+                                                className="h-8 w-8 rounded-full text-slate-400 hover:text-blue-600 hover:bg-blue-50"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    onEditCampus(c);
+                                                }}
+                                            >
+                                                <Settings className="h-4 w-4" />
+                                            </Button>
+
+                                            <AlertDialog>
+                                                <AlertDialogTrigger asChild>
+                                                    <Button
+                                                        size="icon"
+                                                        variant="ghost"
+                                                        className="h-8 w-8 rounded-full text-slate-400 hover:text-red-600 hover:bg-red-50"
+                                                        onClick={(e) => e.stopPropagation()}
+                                                    >
+                                                        <Trash2 className="h-4 w-4" />
+                                                    </Button>
+                                                </AlertDialogTrigger>
+
+                                                <AlertDialogContent className="max-w-[92vw] sm:max-w-md rounded-2xl">
+                                                    <AlertDialogHeader>
+                                                        <AlertDialogTitle className="flex items-center gap-2 text-red-600">
+                                                            <AlertCircle className="h-5 w-5" />
+                                                            ¿Eliminar sede?
+                                                        </AlertDialogTitle>
+                                                        <AlertDialogDescription className="text-slate-600">
+                                                            Se eliminará permanentemente la sede{" "}
+                                                            <span className="font-bold text-slate-900">{c.name}</span>.
+                                                        </AlertDialogDescription>
+                                                    </AlertDialogHeader>
+
+                                                    <AlertDialogFooter className="flex-col sm:flex-row gap-2 mt-4">
+                                                        <AlertDialogCancel className="w-full sm:w-auto rounded-xl border-slate-200">
+                                                            Cancelar
+                                                        </AlertDialogCancel>
+                                                        <AlertDialogAction
+                                                            className="w-full sm:w-auto bg-red-600 hover:bg-red-700 rounded-xl"
+                                                            onClick={() => removeCampus(c)}
+                                                        >
+                                                            Sí, eliminar
+                                                        </AlertDialogAction>
+                                                    </AlertDialogFooter>
+                                                </AlertDialogContent>
+                                            </AlertDialog>
+                                        </div>
+
+                                        {isSelected && <ChevronRight className="ml-1 h-4 w-4 opacity-50" />}
+                                    </div>
+                                );
+                            })
+                        )}
+
+                        {campuses.length === 0 && !loading && (
+                            <div className="text-center py-10 text-slate-400 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                                <Building2 className="h-8 w-8 mx-auto mb-2 opacity-20" />
+                                <p className="text-sm font-medium">No hay sedes</p>
+                                <p className="text-xs">Registre una para comenzar</p>
+                            </div>
+                        )}
+                    </CardContent>
+                </Card>
+
+                {/* AULAS */}
+                <Card className="lg:col-span-2 rounded-2xl border-slate-200 shadow-sm bg-white overflow-hidden flex flex-col h-full">
+                    <CardHeader className="border-b border-slate-100 py-5 bg-white">
+                        <div className="flex items-center justify-between">
+                            <div className="flex flex-col">
+                                <CardTitle className="text-xl text-slate-800 flex items-center gap-2">
+                                    <span className="bg-slate-100 p-1.5 rounded-md">
+                                        <Building2 className="h-4 w-4 text-slate-500" />
+                                    </span>
+                                    Aulas y Espacios
+                                </CardTitle>
+                                <CardDescription className="flex items-center gap-1 mt-1">
+                                    {selCampus ? (
+                                        <>
+                                            <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                                            <span className="font-medium text-green-700">
+                                                {campuses.find((x) => String(x.id) === String(selCampus))?.name}
+                                            </span>
+                                        </>
+                                    ) : (
+                                        <span className="text-orange-500 font-medium flex items-center gap-1">
+                                            <AlertCircle className="h-3 w-3" /> Seleccione una sede primero
+                                        </span>
+                                    )}
+                                </CardDescription>
+                            </div>
+
+                            <Dialog
+                                open={openClass}
+                                onOpenChange={(v) => {
+                                    setOpenClass(v);
+                                    if (!v) resetClassForm();
+                                }}
+                            >
+                                <DialogTrigger asChild>
+                                    <Button disabled={!selCampus} className="rounded-xl bg-blue-600 hover:bg-blue-700 shadow-md transition-all disabled:opacity-50">
+                                        <Plus className="h-4 w-4 mr-2" /> Nueva Aula
+                                    </Button>
+                                </DialogTrigger>
+
+                                <DialogContent className="rounded-2xl sm:max-w-md">
+                                    <DialogHeader>
+                                        <DialogTitle>{editingClass ? "Editar Aula" : "Nueva Aula"}</DialogTitle>
+                                        <DialogDescription>
+                                            {editingClass ? "Actualice los datos del aula." : "Registre un nuevo espacio físico."}
+                                        </DialogDescription>
+                                    </DialogHeader>
+
+                                    <div className="space-y-4 py-2">
+                                        <Field label="Código Interno *">
+                                            <Input
+                                                className="rounded-xl"
+                                                placeholder="Ej. A-101"
+                                                value={classForm.code}
+                                                onChange={(e) => setClassForm({ ...classForm, code: e.target.value })}
+                                            />
+                                        </Field>
+
+                                        <Field label="Nombre Visible *">
+                                            <Input
+                                                className="rounded-xl"
+                                                placeholder="Ej. Laboratorio de Cómputo 1"
+                                                value={classForm.name}
+                                                onChange={(e) => setClassForm({ ...classForm, name: e.target.value })}
+                                            />
+                                        </Field>
+
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <Field label="Capacidad (Estudiantes)">
+                                                <Input
+                                                    type="number"
+                                                    className="rounded-xl"
+                                                    value={classForm.capacity}
+                                                    onChange={(e) => setClassForm({ ...classForm, capacity: parseInt(e.target.value || "0", 10) })}
+                                                />
+                                            </Field>
+
+                                            <Field label="Sede Asignada">
+                                                <Select
+                                                    value={classForm.campus_id || String(selCampus || "")}
+                                                    onValueChange={(v) => setClassForm({ ...classForm, campus_id: v })}
+                                                >
+                                                    <SelectTrigger className="rounded-xl">
+                                                        <SelectValue />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        {campuses.map((c) => (
+                                                            <SelectItem key={c.id} value={String(c.id)}>
+                                                                {c.name}
+                                                            </SelectItem>
+                                                        ))}
+                                                    </SelectContent>
+                                                </Select>
+                                            </Field>
+                                        </div>
+
+                                        <div className="flex justify-end pt-2 gap-2">
+                                            <Button variant="outline" className="rounded-xl" onClick={() => setOpenClass(false)}>
+                                                Cancelar
+                                            </Button>
+                                            <Button onClick={saveClass} className="rounded-xl bg-blue-600 w-full sm:w-auto">
+                                                {editingClass ? "Guardar cambios" : "Guardar Aula"}
+                                            </Button>
+                                        </div>
+                                    </div>
+                                </DialogContent>
+                            </Dialog>
+                        </div>
+                    </CardHeader>
+
+                    <CardContent className="p-0 overflow-x-auto min-h-[300px]">
+                        <table className="w-full text-sm text-left border-collapse table-fixed">
+                            <thead className="bg-slate-50 text-slate-500 uppercase text-xs font-semibold tracking-wider">
                                 <tr>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Código</th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Nombre</th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Capacidad</th>
+                                    <th className="px-6 py-4 border-b border-slate-100 w-40">Código</th>
+                                    <th className="px-6 py-4 border-b border-slate-100">Nombre del Aula</th>
+                                    <th className="px-6 py-4 border-b border-slate-100 w-40 text-center">Capacidad</th>
+                                    <th className="px-6 py-4 border-b border-slate-100 w-28 text-right">Acciones</th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y">
+
+                            <tbody className="divide-y divide-slate-100">
                                 {classrooms.map((a) => (
-                                    <tr key={a.id}>
-                                        <td className="px-6 py-3">{a.code}</td>
-                                        <td className="px-6 py-3">{a.name}</td>
-                                        <td className="px-6 py-3">{a.capacity}</td>
+                                    <tr key={a.id} className="hover:bg-blue-50/30 transition-colors group">
+                                        <td className="px-6 py-4 font-mono text-slate-600 truncate">{a.code}</td>
+                                        <td className="px-6 py-4 font-medium text-slate-700 truncate">{a.name}</td>
+                                        <td className="px-6 py-4 text-center">
+                                            <Badge variant="secondary" className="bg-slate-100 text-slate-600 font-normal">
+                                                {a.capacity} pax
+                                            </Badge>
+                                        </td>
+
+                                        <td className="px-6 py-4 text-right">
+                                            <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                <Button
+                                                    size="icon"
+                                                    variant="ghost"
+                                                    className="h-8 w-8 rounded-full text-slate-400 hover:text-blue-600 hover:bg-blue-50"
+                                                    onClick={() => onEditClassroom(a)}
+                                                >
+                                                    <Settings className="h-4 w-4" />
+                                                </Button>
+
+                                                <AlertDialog>
+                                                    <AlertDialogTrigger asChild>
+                                                        <Button
+                                                            size="icon"
+                                                            variant="ghost"
+                                                            className="h-8 w-8 rounded-full text-slate-400 hover:text-red-600 hover:bg-red-50"
+                                                        >
+                                                            <Trash2 className="h-4 w-4" />
+                                                        </Button>
+                                                    </AlertDialogTrigger>
+
+                                                    <AlertDialogContent className="max-w-[92vw] sm:max-w-md rounded-2xl">
+                                                        <AlertDialogHeader>
+                                                            <AlertDialogTitle className="flex items-center gap-2 text-red-600">
+                                                                <AlertCircle className="h-5 w-5" />
+                                                                ¿Eliminar aula?
+                                                            </AlertDialogTitle>
+                                                            <AlertDialogDescription className="text-slate-600">
+                                                                Esta acción eliminará permanentemente el aula{" "}
+                                                                <span className="font-bold text-slate-900">{a.name}</span>.
+                                                                <br />
+                                                                ¿Deseas continuar?
+                                                            </AlertDialogDescription>
+                                                        </AlertDialogHeader>
+
+                                                        <AlertDialogFooter className="flex-col sm:flex-row gap-2 mt-4">
+                                                            <AlertDialogCancel className="w-full sm:w-auto rounded-xl border-slate-200">
+                                                                Cancelar
+                                                            </AlertDialogCancel>
+                                                            <AlertDialogAction
+                                                                className="w-full sm:w-auto bg-red-600 hover:bg-red-700 rounded-xl"
+                                                                onClick={() => removeClassroom(a)}
+                                                            >
+                                                                Sí, eliminar
+                                                            </AlertDialogAction>
+                                                        </AlertDialogFooter>
+                                                    </AlertDialogContent>
+                                                </AlertDialog>
+                                            </div>
+                                        </td>
                                     </tr>
                                 ))}
+
                                 {classrooms.length === 0 && (
                                     <tr>
-                                        <td colSpan="3" className="text-center py-10 text-gray-500">
-                                            Sin aulas
+                                        <td colSpan={4} className="text-center py-20">
+                                            <div className="flex flex-col items-center justify-center text-slate-300">
+                                                <div className="bg-slate-50 p-4 rounded-full mb-3">
+                                                    <Building2 className="h-8 w-8 text-slate-300" />
+                                                </div>
+                                                <p className="text-lg font-medium text-slate-400">Sin aulas registradas</p>
+                                                <p className="text-xs text-slate-400">Seleccione una sede o cree una nueva aula.</p>
+                                            </div>
                                         </td>
                                     </tr>
                                 )}
@@ -657,9 +1010,9 @@ const CampusesSection = () => {
     );
 };
 
-// ===================================================================
+// ===============================================================
 // Docentes
-// ===================================================================
+// ===============================================================
 const TeachersSection = () => {
     const [rows, setRows] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -714,161 +1067,313 @@ const TeachersSection = () => {
     return (
         <Section
             title={
-                <>
-                    <Users className="h-5 w-5 text-blue-600" />
-                    Docentes
-                </>
+                <div className="flex items-center gap-2">
+                    <div className="p-2 bg-blue-100 rounded-lg">
+                        <Users className="h-5 w-5 text-blue-600" />
+                    </div>
+                    <span className="text-xl font-bold text-gray-800">Directorio de Docentes</span>
+                </div>
             }
-            desc="Directorio de docentes y datos de contacto."
+            desc="Gestione el registro de profesores y su información de contacto."
         >
-            <div className="flex justify-end mb-3">
-                <Dialog open={open} onOpenChange={setOpen}>
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+                <div className="w-full sm:w-72">
+                    <Input
+                        placeholder="Buscar docente..."
+                        className="rounded-xl bg-white border-slate-200 focus:border-blue-500 transition-all shadow-sm"
+                    />
+                </div>
+
+                <Dialog
+                    open={open}
+                    onOpenChange={(v) => {
+                        setOpen(v);
+                        if (!v) setForm({ document: "", full_name: "", email: "", phone: "", specialization: "" });
+                    }}
+                >
                     <DialogTrigger asChild>
-                        <Button className="rounded-xl">Nuevo docente</Button>
+                        <Button className="rounded-xl bg-blue-600 hover:bg-blue-700 shadow-md transition-all gap-2">
+                            <Plus className="h-4 w-4" /> Nuevo docente
+                        </Button>
                     </DialogTrigger>
 
-                    <DialogContent>
+                    <DialogContent className="sm:max-w-lg rounded-2xl">
                         <DialogHeader>
-                            <DialogTitle>Nuevo docente</DialogTitle>
+                            <DialogTitle className="text-xl text-slate-800 flex items-center gap-2">
+                                <UserPlus className="h-5 w-5 text-blue-600" />
+                                Registrar Docente
+                            </DialogTitle>
+                            <DialogDescription>Complete la ficha técnica del profesor.</DialogDescription>
                         </DialogHeader>
 
-                        <div className="space-y-3">
-                            <div className="grid grid-cols-2 gap-3">
-                                <Field label="Documento *">
-                                    <Input value={form.document} onChange={(e) => setForm({ ...form, document: e.target.value })} />
+                        <div className="space-y-5 py-3">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <Field label="Documento de Identidad *">
+                                    <Input
+                                        className="rounded-xl"
+                                        placeholder="DNI / CE"
+                                        value={form.document}
+                                        onChange={(e) => setForm({ ...form, document: e.target.value })}
+                                    />
                                 </Field>
-                                <Field label="Nombre completo *">
-                                    <Input value={form.full_name} onChange={(e) => setForm({ ...form, full_name: e.target.value })} />
+                                <Field label="Nombre Completo *">
+                                    <Input
+                                        className="rounded-xl"
+                                        placeholder="Apellidos y Nombres"
+                                        value={form.full_name}
+                                        onChange={(e) => setForm({ ...form, full_name: e.target.value })}
+                                    />
                                 </Field>
                             </div>
 
-                            <div className="grid grid-cols-2 gap-3">
-                                <Field label="Email">
-                                    <Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <Field label="Correo Electrónico">
+                                    <Input
+                                        type="email"
+                                        className="rounded-xl"
+                                        placeholder="docente@email.com"
+                                        value={form.email}
+                                        onChange={(e) => setForm({ ...form, email: e.target.value })}
+                                    />
                                 </Field>
-                                <Field label="Teléfono">
-                                    <Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
+                                <Field label="Teléfono / Celular">
+                                    <Input
+                                        className="rounded-xl"
+                                        placeholder="999 999 999"
+                                        value={form.phone}
+                                        onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                                    />
                                 </Field>
                             </div>
 
-                            <Field label="Especialidad">
-                                <Input value={form.specialization} onChange={(e) => setForm({ ...form, specialization: e.target.value })} />
+                            <Field label="Especialidad / Área">
+                                <Input
+                                    className="rounded-xl"
+                                    placeholder="Ej. Matemáticas, Ciencias, Historia..."
+                                    value={form.specialization}
+                                    onChange={(e) => setForm({ ...form, specialization: e.target.value })}
+                                />
                             </Field>
 
-                            <div className="flex justify-end">
-                                <Button onClick={save} className="rounded-xl">Guardar</Button>
+                            <div className="flex justify-end pt-4 border-t border-slate-100">
+                                <Button onClick={save} className="rounded-xl bg-blue-600 hover:bg-blue-700 w-full sm:w-auto px-8 shadow-md">
+                                    Guardar Ficha
+                                </Button>
                             </div>
                         </div>
                     </DialogContent>
                 </Dialog>
             </div>
 
-            <div className="overflow-x-auto">
-                <table className="w-full">
-                    <thead className="bg-gray-50 border-b">
-                        <tr>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Documento</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Nombre</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Email</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Teléfono</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Especialidad</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Acciones</th>
-                        </tr>
-                    </thead>
+            <Card className="rounded-2xl border-slate-200 shadow-sm bg-white overflow-hidden">
+                <CardContent className="p-0">
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-sm text-left">
+                            <thead className="bg-slate-50 border-b border-slate-100 text-slate-500 uppercase text-xs font-semibold tracking-wider sticky top-0 z-10">
+                                <tr>
+                                    <th className="px-6 py-4">Docente</th>
+                                    <th className="px-6 py-4">Contacto</th>
+                                    <th className="px-6 py-4">Especialidad</th>
+                                    <th className="px-6 py-4 text-right">Acciones</th>
+                                </tr>
+                            </thead>
 
-                    <tbody className="divide-y">
-                        {rows.map((r) => (
-                            <tr key={r.id}>
-                                <td className="px-6 py-3">{r.document}</td>
-                                <td className="px-6 py-3">{r.full_name}</td>
-                                <td className="px-6 py-3">{r.email || "-"}</td>
-                                <td className="px-6 py-3">{r.phone || "-"}</td>
-                                <td className="px-6 py-3">{r.specialization || "-"}</td>
-                                <td className="px-6 py-3">
-                                    <AlertDialog>
-                                        <AlertDialogTrigger asChild>
-                                            <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-red-600">
-                                                <XCircle className="h-4 w-4" />
-                                            </Button>
-                                        </AlertDialogTrigger>
+                            <tbody className="divide-y divide-slate-100">
+                                {rows.map((r) => (
+                                    <tr key={r.id} className="hover:bg-slate-50/80 transition-colors group">
+                                        <td className="px-6 py-4">
+                                            <div className="flex items-center gap-3">
+                                                <div className="h-10 w-10 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center font-bold text-xs border border-blue-100 shrink-0">
+                                                    {r.full_name?.charAt(0) || "D"}
+                                                </div>
+                                                <div className="flex flex-col">
+                                                    <span className="font-semibold text-slate-800">{r.full_name}</span>
+                                                    <span className="text-xs text-slate-500 flex items-center gap-1">
+                                                        <CreditCard className="h-3 w-3" /> {r.document}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        </td>
 
-                                        <AlertDialogContent className="max-w-[92vw] sm:max-w-md">
-                                            <AlertDialogHeader>
-                                                <AlertDialogTitle>¿Eliminar docente?</AlertDialogTitle>
-                                                <AlertDialogDescription>
-                                                    Esta acción no se puede deshacer. Se eliminará el docente{" "}
-                                                    <span className="font-semibold">{r.full_name}</span>.
-                                                </AlertDialogDescription>
-                                            </AlertDialogHeader>
+                                        <td className="px-6 py-4">
+                                            <div className="flex flex-col gap-1">
+                                                {r.email ? (
+                                                    <div className="flex items-center gap-1.5 text-slate-600">
+                                                        <Mail className="h-3.5 w-3.5 text-slate-400" />
+                                                        <span>{r.email}</span>
+                                                    </div>
+                                                ) : (
+                                                    <span className="text-slate-400 text-xs italic opacity-50">Sin email</span>
+                                                )}
 
-                                            <AlertDialogFooter className="flex-col sm:flex-row gap-2">
-                                                <AlertDialogCancel className="w-full sm:w-auto">
-                                                    Cancelar
-                                                </AlertDialogCancel>
+                                                {r.phone ? (
+                                                    <div className="flex items-center gap-1.5 text-slate-600">
+                                                        <Phone className="h-3.5 w-3.5 text-slate-400" />
+                                                        <span>{r.phone}</span>
+                                                    </div>
+                                                ) : (
+                                                    <span className="text-slate-400 text-xs italic opacity-50">Sin teléfono</span>
+                                                )}
+                                            </div>
+                                        </td>
 
-                                                <AlertDialogAction
-                                                    className="w-full sm:w-auto bg-red-600 hover:bg-red-700"
-                                                    onClick={() => remove(r.id)}
-                                                >
-                                                    Sí, eliminar
-                                                </AlertDialogAction>
-                                            </AlertDialogFooter>
-                                        </AlertDialogContent>
-                                    </AlertDialog>
+                                        <td className="px-6 py-4">
+                                            {r.specialization ? (
+                                                <Badge variant="secondary" className="bg-slate-100 text-slate-600 font-normal px-3 py-1">
+                                                    {r.specialization}
+                                                </Badge>
+                                            ) : (
+                                                <span className="text-slate-400 text-xs">—</span>
+                                            )}
+                                        </td>
 
+                                        <td className="px-6 py-4 text-right">
+                                            <AlertDialog>
+                                                <AlertDialogTrigger asChild>
+                                                    <Button
+                                                        size="icon"
+                                                        variant="ghost"
+                                                        className="h-8 w-8 rounded-full text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                                                    >
+                                                        <Trash2 className="h-4 w-4" />
+                                                    </Button>
+                                                </AlertDialogTrigger>
 
+                                                <AlertDialogContent className="max-w-[92vw] sm:max-w-md rounded-2xl">
+                                                    <AlertDialogHeader>
+                                                        <AlertDialogTitle className="flex items-center gap-2 text-red-600">
+                                                            <AlertCircle className="h-5 w-5" />
+                                                            ¿Eliminar docente?
+                                                        </AlertDialogTitle>
+                                                        <AlertDialogDescription className="text-slate-600">
+                                                            Esta acción eliminará permanentemente a{" "}
+                                                            <span className="font-bold text-slate-900">{r.full_name}</span> del sistema.
+                                                            <br />
+                                                            ¿Está seguro de continuar?
+                                                        </AlertDialogDescription>
+                                                    </AlertDialogHeader>
 
-                                </td>
-                            </tr>
-                        ))}
+                                                    <AlertDialogFooter className="flex-col sm:flex-row gap-2 mt-4">
+                                                        <AlertDialogCancel className="w-full sm:w-auto rounded-xl border-slate-200">
+                                                            Cancelar
+                                                        </AlertDialogCancel>
+                                                        <AlertDialogAction
+                                                            className="w-full sm:w-auto bg-red-600 hover:bg-red-700 rounded-xl"
+                                                            onClick={() => remove(r.id)}
+                                                        >
+                                                            Sí, eliminar
+                                                        </AlertDialogAction>
+                                                    </AlertDialogFooter>
+                                                </AlertDialogContent>
+                                            </AlertDialog>
+                                        </td>
+                                    </tr>
+                                ))}
 
-                        {rows.length === 0 && !loading && (
-                            <tr>
-                                <td colSpan="6" className="text-center py-10 text-gray-500">
-                                    Sin docentes
-                                </td>
-                            </tr>
-                        )}
+                                {rows.length === 0 && !loading && (
+                                    <tr>
+                                        <td colSpan="4" className="py-16 text-center">
+                                            <div className="flex flex-col items-center justify-center text-slate-400">
+                                                <div className="bg-slate-50 p-4 rounded-full mb-3">
+                                                    <Users className="h-8 w-8 text-slate-300" />
+                                                </div>
+                                                <p className="text-lg font-medium text-slate-500">No hay docentes registrados</p>
+                                                <p className="text-sm">Agregue uno nuevo para comenzar.</p>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                )}
 
-                        {loading && (
-                            <tr>
-                                <td colSpan="6" className="text-center py-10 text-gray-500">
-                                    Cargando…
-                                </td>
-                            </tr>
-                        )}
-                    </tbody>
-                </table>
-            </div>
+                                {loading && (
+                                    <tr>
+                                        <td colSpan="4" className="py-16 text-center">
+                                            <div className="flex flex-col items-center justify-center gap-3">
+                                                <div className="animate-spin rounded-full h-8 w-8 border-4 border-slate-100 border-t-blue-600" />
+                                                <span className="text-slate-400 text-sm font-medium">Cargando directorio...</span>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                </CardContent>
+            </Card>
         </Section>
     );
 };
 
-// ===================================================================
+// ===============================================================
 // Ubigeo + Parámetros de institución (logo/firma)
-// ===================================================================
-const MediaUpload = ({ label, url, onChange }) => (
-    <div className="space-y-1">
-        <Label>{label}</Label>
-        <div className="flex items-center gap-3">
-            {url ? (
-                <img src={url} alt={label} className="w-16 h-16 object-contain border rounded" />
-            ) : (
-                <div className="w-16 h-16 border rounded flex items-center justify-center text-gray-400">
-                    <ImageIcon className="h-6 w-6" />
+// ===============================================================
+const MediaUpload = ({ label, url, onChange, loading }) => {
+    const [localPreview, setLocalPreview] = React.useState("");
+    const [imgError, setImgError] = React.useState(false);
+
+    React.useEffect(() => {
+        return () => {
+            if (localPreview) URL.revokeObjectURL(localPreview);
+        };
+    }, [localPreview]);
+
+    const src = !imgError ? (localPreview || url) : "";
+
+    return (
+        <div className="space-y-1 w-full">
+            <Label>{label}</Label>
+
+            <div className="flex items-center gap-3 w-full">
+                {src ? (
+                    <img
+                        src={src}
+                        alt={label}
+                        className="w-16 h-16 object-contain border rounded bg-white"
+                        onError={() => setImgError(true)}
+                    />
+                ) : (
+                    <div className="w-16 h-16 border rounded flex items-center justify-center text-gray-400 bg-white">
+                        <ImageIcon className="h-6 w-6" />
+                    </div>
+                )}
+
+                <div className="w-full space-y-1">
+                    <Input
+                        type="file"
+                        accept="image/png,image/jpeg"
+                        className="w-full"
+                        disabled={!!loading}
+                        onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (!file) return;
+
+                            setImgError(false);
+                            const objectUrl = URL.createObjectURL(file);
+                            setLocalPreview((prev) => {
+                                if (prev) URL.revokeObjectURL(prev);
+                                return objectUrl;
+                            });
+
+                            onChange(file);
+                        }}
+                    />
+
+                    {loading && (
+                        <div className="text-xs text-blue-600 flex items-center gap-2">
+                            <span className="inline-block h-3 w-3 rounded-full border-2 border-slate-200 border-t-blue-600 animate-spin" />
+                            Subiendo...
+                        </div>
+                    )}
                 </div>
-            )}
-            <Input
-                type="file"
-                accept="image/*"
-                onChange={(e) => e.target.files?.[0] && onChange(e.target.files[0])}
-            />
+            </div>
         </div>
-    </div>
-);
+    );
+};
 
 const InstitutionSection = () => {
     const [settings, setSettings] = useState(null);
+
+    const [uploadingKind, setUploadingKind] = useState(null);
+
     const [dept, setDept] = useState("");
     const [prov, setProv] = useState("");
     const [dist, setDist] = useState("");
@@ -883,19 +1388,27 @@ const InstitutionSection = () => {
             setSettings(s ?? {});
 
             const d = await Ubigeo.deps();
-            setDeps(d?.items ?? d ?? []);
+            setDeps(normalizeUbigeoList(d));
 
-            if (s?.department) {
-                setDept(s.department);
-                const pv = await Ubigeo.provs(s.department);
-                setProvs(pv?.items ?? pv ?? []);
+            const sDept = String(s?.department || "");
+            const sProv = String(s?.province || "");
+            const sDist = String(s?.district || "");
+
+            if (sDept) {
+                setDept(sDept);
+
+                const pv = await Ubigeo.provs(sDept);
+                setProvs(normalizeUbigeoList(pv));
+
+                if (sProv) {
+                    setProv(sProv);
+
+                    const ds = await Ubigeo.dists(sDept, sProv);
+                    setDists(normalizeUbigeoList(ds));
+
+                    if (sDist) setDist(sDist);
+                }
             }
-            if (s?.department && s?.province) {
-                setProv(s.province);
-                const ds = await Ubigeo.dists(s.department, s.province);
-                setDists(ds?.items ?? ds ?? []);
-            }
-            if (s?.district) setDist(s.district);
         } catch (e) {
             toast.error(formatApiError(e));
         }
@@ -920,10 +1433,17 @@ const InstitutionSection = () => {
 
     const onUpload = async (kind, file) => {
         try {
+            setUploadingKind(kind);
+
             const r = await Institution.uploadMedia(kind, file);
             toast.success("Archivo subido");
 
-            const url = r?.url || r?.file || r?.file_url;
+            let url = r?.url || r?.file || r?.file_url;
+
+            const API_BASE = import.meta?.env?.VITE_API_URL || import.meta?.env?.VITE_API_BASE_URL || "";
+            if (url && !/^https?:\/\//i.test(url) && API_BASE) {
+                url = `${API_BASE.replace(/\/$/, "")}/${String(url).replace(/^\//, "")}`;
+            }
 
             setSettings((s) => ({
                 ...s,
@@ -931,69 +1451,87 @@ const InstitutionSection = () => {
                     ? { logo_url: url }
                     : kind === "SIGNATURE"
                         ? { signature_url: url }
-                        : { logo_alt_url: url }),
+                        : {}),
             }));
         } catch (e) {
             toast.error(formatApiError(e));
+        } finally {
+            setUploadingKind(null);
         }
     };
 
     return (
         <Section
             title={
-                <>
-                    <Settings className="h-5 w-5 text-blue-600" />
-                    Parámetros de institución
-                </>
+                <div className="flex items-center gap-2">
+                    <div className="p-2 bg-blue-100 rounded-lg">
+                        <Settings className="h-5 w-5 text-blue-600" />
+                    </div>
+                    <span className="text-xl font-bold text-gray-800">Parámetros de institución</span>
+                </div>
             }
-            desc="Datos generales, ubicación y medios (logo/firma)."
+            desc="Configure la información general, ubicación y elementos de identidad visual."
         >
             {!settings ? (
-                <div className="flex justify-center py-10">
-                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600" />
+                <div className="flex flex-col items-center justify-center py-20 bg-white rounded-2xl border border-dashed border-slate-200">
+                    <div className="animate-spin rounded-full h-10 w-10 border-4 border-slate-100 border-t-blue-600 mb-4" />
+                    <p className="text-slate-400 font-medium">Cargando configuración...</p>
                 </div>
             ) : (
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                    <Card className="lg:col-span-2 rounded-2xl">
-                        <CardHeader>
-                            <CardTitle>Datos generales</CardTitle>
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                    <Card className="lg:col-span-2 rounded-2xl border-slate-200 shadow-sm bg-white overflow-hidden">
+                        <CardHeader className="border-b border-slate-100 bg-slate-50/50 py-4">
+                            <CardTitle className="text-lg text-slate-800 flex items-center gap-2">
+                                <Building2 className="h-4 w-4 text-slate-500" />
+                                Información General
+                            </CardTitle>
                         </CardHeader>
 
-                        <CardContent className="space-y-4">
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                <div className="min-w-0">
-                                    <Field label="Nombre *">
-                                        <Input
-                                            className="w-full"
-                                            value={settings.name || ""}
-                                            onChange={(e) => setSettings({ ...settings, name: e.target.value })}
-                                        />
-                                    </Field>
-                                </div>
-
-                                <div className="min-w-0">
-                                    <Field label="RUC">
-                                        <Input
-                                            className="w-full"
-                                            value={settings.ruc || ""}
-                                            onChange={(e) => setSettings({ ...settings, ruc: e.target.value })}
-                                        />
-                                    </Field>
+                        <CardContent className="p-6 space-y-8">
+                            <div className="space-y-4">
+                                <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Identidad Legal</h3>
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
+                                    <div className="sm:col-span-2">
+                                        <Field label="Nombre o Razón Social *">
+                                            <Input
+                                                className="rounded-xl bg-slate-50 focus:bg-white transition-colors"
+                                                value={settings.name || ""}
+                                                onChange={(e) => setSettings({ ...settings, name: e.target.value })}
+                                                placeholder="Ej. Institución Educativa..."
+                                            />
+                                        </Field>
+                                    </div>
+                                    <div>
+                                        <Field label="RUC / Identificador">
+                                            <Input
+                                                className="rounded-xl bg-slate-50 focus:bg-white transition-colors font-mono text-sm"
+                                                value={settings.ruc || ""}
+                                                onChange={(e) => setSettings({ ...settings, ruc: e.target.value })}
+                                                placeholder="20123456789"
+                                            />
+                                        </Field>
+                                    </div>
                                 </div>
                             </div>
 
-                            <div className="min-w-0">
-                                <Field label="Dirección">
-                                    <Input
-                                        className="w-full"
-                                        value={settings.address || ""}
-                                        onChange={(e) => setSettings({ ...settings, address: e.target.value })}
-                                    />
+                            <hr className="border-slate-100" />
+
+                            <div className="space-y-4">
+                                <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Ubicación Geográfica</h3>
+
+                                <Field label="Dirección Fiscal">
+                                    <div className="relative">
+                                        <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                                        <Input
+                                            className="rounded-xl pl-10 bg-slate-50 focus:bg-white transition-colors"
+                                            value={settings.address || ""}
+                                            onChange={(e) => setSettings({ ...settings, address: e.target.value })}
+                                            placeholder="Av. Principal #123..."
+                                        />
+                                    </div>
                                 </Field>
-                            </div>
 
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                                <div className="min-w-0">
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                                     <Field label="Departamento">
                                         <Select
                                             value={dept}
@@ -1001,183 +1539,185 @@ const InstitutionSection = () => {
                                                 setDept(v);
                                                 setProv("");
                                                 setDist("");
-                                                const pv = await Ubigeo.provs(v);
-                                                setProvs(pv?.items ?? pv ?? []);
                                                 setDists([]);
+
+                                                const pv = await Ubigeo.provs(v);
+                                                setProvs(normalizeUbigeoList(pv));
                                             }}
                                         >
-                                            <SelectTrigger className="w-full min-w-0">
+                                            <SelectTrigger className="w-full rounded-xl bg-slate-50 border-slate-200">
                                                 <SelectValue placeholder="Seleccionar" />
                                             </SelectTrigger>
-
-                                            <SelectContent
-                                                position="popper"
-                                                className="z-[99999] max-h-60 overflow-y-auto w-[var(--radix-select-trigger-width)]"
-                                            >
-                                                {deps.map((d) => {
-                                                    const value = String(d?.code ?? d?.id ?? d?.name ?? d);
-                                                    const label = d?.name ?? String(d);
-                                                    return (
-                                                        <SelectItem key={value} value={value}>
-                                                            {label}
-                                                        </SelectItem>
-                                                    );
-                                                })}
+                                            <SelectContent position="popper" className="max-h-60">
+                                                {deps.map((d) => (
+                                                    <SelectItem key={d.code} value={d.code}>
+                                                        {d.name}
+                                                    </SelectItem>
+                                                ))}
                                             </SelectContent>
                                         </Select>
                                     </Field>
-                                </div>
 
-                                <div className="min-w-0">
                                     <Field label="Provincia">
                                         <Select
                                             value={prov}
+                                            disabled={!dept}
                                             onValueChange={async (v) => {
                                                 setProv(v);
                                                 setDist("");
-                                                const ds = await Ubigeo.dists(dept, v);
-                                                setDists(ds?.items ?? ds ?? []);
-                                            }}
-                                            disabled={!dept}
-                                        >
-                                            <SelectTrigger className="w-full min-w-0">
-                                                <SelectValue placeholder={!dept ? "Elige departamento" : "Seleccionar"} />
-                                            </SelectTrigger>
 
-                                            <SelectContent
-                                                position="popper"
-                                                className="z-[99999] max-h-60 overflow-y-auto w-[var(--radix-select-trigger-width)]"
-                                            >
-                                                {provs.map((p) => {
-                                                    const value = String(p?.code ?? p?.id ?? p?.name ?? p);
-                                                    const label = p?.name ?? String(p);
-                                                    return (
-                                                        <SelectItem key={value} value={value}>
-                                                            {label}
-                                                        </SelectItem>
-                                                    );
-                                                })}
+                                                const ds = await Ubigeo.dists(dept, v);
+                                                setDists(normalizeUbigeoList(ds));
+                                            }}
+                                        >
+                                            <SelectTrigger className="w-full rounded-xl bg-slate-50 border-slate-200">
+                                                <SelectValue placeholder="Seleccionar" />
+                                            </SelectTrigger>
+                                            <SelectContent position="popper" className="max-h-60">
+                                                {provs.map((p) => (
+                                                    <SelectItem key={p.code} value={p.code}>
+                                                        {p.name}
+                                                    </SelectItem>
+                                                ))}
                                             </SelectContent>
                                         </Select>
                                     </Field>
-                                </div>
 
-                                <div className="min-w-0">
                                     <Field label="Distrito">
                                         <Select value={dist} onValueChange={setDist} disabled={!dept || !prov}>
-                                            <SelectTrigger className="w-full min-w-0">
-                                                <SelectValue
-                                                    placeholder={!dept ? "Elige departamento" : !prov ? "Elige provincia" : "Seleccionar"}
-                                                />
+                                            <SelectTrigger className="w-full rounded-xl bg-slate-50 border-slate-200">
+                                                <SelectValue placeholder="Seleccionar" />
                                             </SelectTrigger>
-
-                                            <SelectContent
-                                                position="popper"
-                                                className="z-[99999] max-h-60 overflow-y-auto w-[var(--radix-select-trigger-width)]"
-                                            >
-                                                {dists.map((d) => {
-                                                    const value = String(d?.code ?? d?.id ?? d?.name ?? d);
-                                                    const label = d?.name ?? String(d);
-                                                    return (
-                                                        <SelectItem key={value} value={value}>
-                                                            {label}
-                                                        </SelectItem>
-                                                    );
-                                                })}
+                                            <SelectContent position="popper" className="max-h-60">
+                                                {dists.map((d) => (
+                                                    <SelectItem key={d.code} value={d.code}>
+                                                        {d.name}
+                                                    </SelectItem>
+                                                ))}
                                             </SelectContent>
                                         </Select>
                                     </Field>
                                 </div>
                             </div>
 
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                                <div className="min-w-0">
-                                    <Field label="Web">
+                            <hr className="border-slate-100" />
+
+                            <div className="space-y-4">
+                                <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Canales de Contacto</h3>
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
+                                    <Field label="Sitio Web">
                                         <Input
-                                            className="w-full"
+                                            className="rounded-xl bg-slate-50 focus:bg-white transition-colors text-sm"
                                             value={settings.website || ""}
                                             onChange={(e) => setSettings({ ...settings, website: e.target.value })}
+                                            placeholder="www.ejemplo.edu.pe"
                                         />
                                     </Field>
-                                </div>
 
-                                <div className="min-w-0">
-                                    <Field label="Email">
+                                    <Field label="Correo Electrónico">
                                         <Input
-                                            className="w-full"
+                                            className="rounded-xl bg-slate-50 focus:bg-white transition-colors text-sm"
                                             value={settings.email || ""}
                                             onChange={(e) => setSettings({ ...settings, email: e.target.value })}
+                                            placeholder="contacto@institucion.com"
                                         />
                                     </Field>
-                                </div>
 
-                                <div className="min-w-0">
-                                    <Field label="Teléfono">
+                                    <Field label="Teléfono / Celular">
                                         <Input
-                                            className="w-full"
+                                            className="rounded-xl bg-slate-50 focus:bg-white transition-colors text-sm"
                                             value={settings.phone || ""}
                                             onChange={(e) => setSettings({ ...settings, phone: e.target.value })}
+                                            placeholder="(01) 123-4567"
                                         />
                                     </Field>
                                 </div>
                             </div>
 
-                            <div className="flex justify-end">
-                                <Button onClick={update} className="rounded-xl w-full sm:w-auto">
-                                    Guardar
+                            <div className="flex justify-end pt-4">
+                                <Button onClick={update} className="rounded-xl bg-blue-600 hover:bg-blue-700 shadow-md w-full sm:w-auto px-8 gap-2">
+                                    <Save className="h-4 w-4" />
+                                    Guardar Cambios
                                 </Button>
                             </div>
                         </CardContent>
                     </Card>
 
-                    <Card className="rounded-2xl">
-                        <CardHeader>
-                            <CardTitle>Medios</CardTitle>
-                            <CardDescription>Suba logos y firma digital (PNG/SVG).</CardDescription>
-                        </CardHeader>
+                    <div className="space-y-6">
+                        <Card className="rounded-2xl border-slate-200 shadow-sm bg-white">
+                            <CardHeader className="border-b border-slate-100 bg-slate-50/50 py-4">
+                                <CardTitle className="text-lg text-slate-800 flex items-center gap-2">
+                                    <Image className="h-4 w-4 text-slate-500" />
+                                    Activos Digitales
+                                </CardTitle>
+                                <CardDescription>Logo principal y firma del director.</CardDescription>
+                            </CardHeader>
 
-                        <CardContent className="space-y-4">
-                            <MediaUpload label="Logo principal" url={settings.logo_url} onChange={(f) => onUpload("LOGO", f)} />
-                            <MediaUpload label="Logo alterno" url={settings.logo_alt_url} onChange={(f) => onUpload("LOGO_ALT", f)} />
-                            <MediaUpload label="Firma (autoridad)" url={settings.signature_url} onChange={(f) => onUpload("SIGNATURE", f)} />
-                        </CardContent>
-                    </Card>
+                            <CardContent className="p-6 space-y-6">
+                                <div className="space-y-2">
+                                    <Label className="text-xs font-semibold text-slate-500 uppercase">Logo Principal</Label>
+
+                                    <div className="p-1 border-2 border-dashed border-slate-200 rounded-xl bg-slate-50/50 hover:bg-slate-50 transition-colors">
+                                        <MediaUpload
+                                            label="Subir logo"
+                                            url={settings.logo_url}
+                                            loading={uploadingKind === "LOGO"}
+                                            onChange={(f) => onUpload("LOGO", f)}
+                                        />
+                                    </div>
+
+                                    <p className="text-[10px] text-slate-400 mt-1">
+                                        Formato recomendado: <span className="font-medium text-slate-500">PNG</span> (también JPG). Ideal{" "}
+                                        <span className="font-medium text-slate-500">cuadrado</span> (ej. 512×512) y con{" "}
+                                        <span className="font-medium text-slate-500">fondo transparente</span>.
+                                    </p>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <Label className="text-xs font-semibold text-slate-500 uppercase">Firma del Director</Label>
+
+                                    <div className="p-1 border-2 border-dashed border-slate-200 rounded-xl bg-slate-50/50 hover:bg-slate-50 transition-colors">
+                                        <MediaUpload
+                                            label="Subir firma"
+                                            url={settings.signature_url}
+                                            loading={uploadingKind === "SIGNATURE"}
+                                            onChange={(f) => onUpload("SIGNATURE", f)}
+                                        />
+                                    </div>
+
+                                    <p className="text-[10px] text-slate-400 mt-1">
+                                        Formato recomendado: <span className="font-medium text-slate-500">PNG sin fondo</span>. Ideal{" "}
+                                        <span className="font-medium text-slate-500">horizontal</span> (ej. 800×300) y en buena calidad (sin pixelarse).
+                                    </p>
+                                </div>
+                            </CardContent>
+
+                        </Card>
+                    </div>
                 </div>
             )}
         </Section>
     );
 };
 
-// ===================================================================
-// Importadores Excel/CSV
-// ===================================================================
+// ===============================================================
+// Importadores Excel/CSV (SIN MAPEO)
+// ===============================================================
 const ImportersTab = () => {
-    const [type, setType] = useState("students"); // students|courses|grades
+    const [type, setType] = useState("students");
     const [file, setFile] = useState(null);
-    const [mapping, setMapping] = useState({});
     const [job, setJob] = useState(null);
     const [status, setStatus] = useState(null);
     const [poll, setPoll] = useState(null);
-
-    const required = useMemo(() => {
-        if (type === "plans") return ["(auto)"];
-        if (type === "students") return [
-            "num_documento", "nombres", "apellido_paterno", "apellido_materno",
-            "sexo", "fecha_nac", "region", "provincia", "distrito",
-            "codigo_modular", "nombre_institucion", "gestion", "tipo",
-            "programa_carrera", "ciclo", "turno", "seccion", "periodo",
-            "lengua", "discapacidad", "tipo_discapacidad",
-        ];
-        if (type === "grades") return ["(auto)"]; // tu excel real de notas no usa student_document/course_code
-        return [];
-    }, [type]);
 
     useEffect(() => () => { if (poll) clearInterval(poll); }, [poll]);
 
     const start = async () => {
         if (!file) { toast.error("Adjunta un archivo"); return; }
         try {
-            const res = await Imports.start(type, file, mapping);
+            // 👇 si tu Imports.start acepta 3 params, deja el 3ro undefined o {}
+            const res = await Imports.start(type, file /*, undefined */);
+
             const jobId = res?.job_id || res?.id;
             setJob(jobId);
             toast.success("Importación encolada");
@@ -1201,7 +1741,6 @@ const ImportersTab = () => {
 
     const downloadTemplate = async () => {
         try {
-            // ✅ debe existir en service: Imports.downloadTemplate(type)
             const res = await Imports.downloadTemplate(type);
 
             const cd = res.headers?.["content-disposition"];
@@ -1239,7 +1778,6 @@ const ImportersTab = () => {
                                 <SelectItem value="students">Alumnos</SelectItem>
                                 <SelectItem value="grades">Notas históricas</SelectItem>
                             </SelectContent>
-
                         </Select>
                     </Field>
 
@@ -1269,39 +1807,19 @@ const ImportersTab = () => {
                     </Field>
                 </div>
 
-                <div className="mt-4">
-                    <Label className="mb-2 block">Mapeo de columnas (opcional)</Label>
-                    <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                        {required.map((f) => (
-                            <div key={f} className="space-y-1">
-                                <Label className="text-xs">{f}</Label>
-                                <Input
-                                    placeholder={`Columna para "${f}"`}
-                                    value={mapping[f] || ""}
-                                    onChange={(e) => setMapping({ ...mapping, [f]: e.target.value })}
-                                />
-                            </div>
-                        ))}
-                    </div>
-
-                    <p className="text-xs text-gray-500 mt-2">
-                        Si no defines mapeo, el backend detecta automáticamente el Excel oficial (con encabezados REGIÓN, CÓDIGO_MODULAR, etc).
-                    </p>
-                </div>
-
                 <div className="flex justify-end gap-2 mt-4">
                     <Button
                         variant="outline"
                         className="rounded-xl"
                         onClick={() => {
                             setFile(null);
-                            setMapping({});
                             setStatus(null);
                             setJob(null);
                         }}
                     >
                         Limpiar
                     </Button>
+
                     <Button onClick={start} className="rounded-xl">
                         <UploadCloud className="h-4 w-4 mr-2" />
                         Iniciar importación
@@ -1326,9 +1844,7 @@ const ImportersTab = () => {
                                 <div>
                                     <div><strong>Job:</strong> {job || "-"}</div>
                                     <div><strong>Estado:</strong> {status?.state || "EN COLA"}</div>
-                                    {status?.progress != null && (
-                                        <div><strong>Progreso:</strong> {Math.round(status.progress)}%</div>
-                                    )}
+                                    {status?.progress != null && <div><strong>Progreso:</strong> {Math.round(status.progress)}%</div>}
                                     {Array.isArray(status?.errors) && status.errors.length > 0 && (
                                         <div className="mt-2">
                                             <strong>Errores:</strong>
@@ -1347,9 +1863,9 @@ const ImportersTab = () => {
     );
 };
 
-// ===================================================================
+// ===============================================================
 // Respaldo / Exportación
-// ===================================================================
+// ===============================================================
 const BackupTab = () => {
     const [rows, setRows] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -1384,10 +1900,8 @@ const BackupTab = () => {
             const res = await Backup.exportDataset(ds);
             toast.success("Exportación generada");
 
-            // refresca el historial para ver el nuevo zip
             await load();
 
-            // descarga automática
             const id = res?.backup_id;
             if (id) {
                 const downloadRes = await Backup.download(id);
@@ -1407,8 +1921,6 @@ const BackupTab = () => {
         }
     };
 
-
-    // ✅ FIX: descarga real con Bearer (blob) usando Backup.download(id)
     const downloadBackup = async (b) => {
         try {
             const res = await Backup.download(b.id);
@@ -1542,16 +2054,13 @@ const BackupTab = () => {
     );
 };
 
-// ===================================================================
+// ===============================================================
 // MAIN
-// ===================================================================
+// ===============================================================
 const ConfigCatalogsModule = () => {
     const { user, loading, hasAny } = useAuth();
 
-    const canAccessCatalogs = hasAny([
-        "admin.catalogs.view",
-        "admin.catalogs.manage",
-    ]);
+    const canAccessCatalogs = hasAny(["admin.catalogs.view", "admin.catalogs.manage"]);
 
     if (loading) {
         return (

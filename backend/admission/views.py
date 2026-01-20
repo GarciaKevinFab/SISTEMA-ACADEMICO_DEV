@@ -362,7 +362,14 @@ def applications_collection(request):
 
     payload = request.data or {}
 
-    # Exigir applicant real (por tu modelo: dni/names/email obligatorios)
+    # ✅ acepta varios nombres desde FE
+    if "call" not in payload:
+        if payload.get("call_id"):
+            payload = {**payload, "call": payload.get("call_id")}
+        elif payload.get("admission_call_id"):
+            payload = {**payload, "call": payload.get("admission_call_id")}
+
+    # ✅ Exigir applicant real
     applicant_id = payload.get("applicant")
     if not applicant_id:
         app = Applicant.objects.filter(user=request.user).first()
@@ -371,7 +378,9 @@ def applications_collection(request):
         payload = {**payload, "applicant": app.id}
 
     s = ApplicationSerializer(data=payload)
-    s.is_valid(raise_exception=True)
+    if not s.is_valid():
+        return Response({"detail": "validation_error", "errors": s.errors}, status=400)
+
     obj = s.save()
     return Response(ApplicationSerializer(obj).data, status=201)
 

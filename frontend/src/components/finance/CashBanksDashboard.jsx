@@ -232,266 +232,237 @@ export default function CashBanksDashboard() {
   }
 
   return (
-    <div className="flex flex-col w-full min-h-screen bg-slate-50/50 pb-10">
+  <div className="flex flex-col w-full min-h-screen bg-[#1E2F49] pb-12 animate-in fade-in duration-500">
 
-  {/* 1. CABECERA */}
-  <div className="flex-none px-4 sm:px-6 py-4 border-b bg-white flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4 shadow-sm">
-    <div className="min-w-0">
-      <h2 className="text-xl font-bold text-gray-800">Caja y Bancos</h2>
-      <p className="text-xs text-gray-500">Gestión de flujo de efectivo</p>
-    </div>
+    {/* 1. CABECERA - Se mantiene integrada al fondo azul */}
+    <div className="flex-none px-6 sm:px-10 py-5 border-b border-white/10 bg-[#1E2F49]
+                    flex flex-col sm:flex-row items-start sm:items-center
+                    justify-between gap-4 shadow-md sticky top-0 z-30">
+      <div className="flex items-center gap-4 min-w-0">
+        <div className="p-2.5 bg-white/10 rounded-lg hidden sm:block border border-white/5">
+          <RefreshCw className="h-6 w-6 text-blue-200" />
+        </div>
+        <div className="min-w-0">
+          <h2 className="text-2xl font-bold text-white tracking-tight">
+            Caja y Bancos
+          </h2>
+          <p className="text-xs text-blue-100/60 font-medium uppercase tracking-widest">
+            Gestión de Flujo de Efectivo
+          </p>
+        </div>
+      </div>
 
-    <div className="w-full sm:w-auto flex flex-col sm:flex-row gap-2 sm:items-center">
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={() => { loadSessions(); loadMovs(); }}
-        className="h-9 w-full sm:w-auto"
-      >
-        <RefreshCw className="h-3.5 w-3.5 mr-2" /> Actualizar
-      </Button>
+      <div className="w-full sm:w-auto flex gap-2">
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={() => { loadSessions(); loadMovs(); }}
+          className="h-10 flex-1 sm:flex-none bg-white/10 hover:bg-white/20 text-white border-white/10 px-5"
+        >
+          <RefreshCw className="h-4 w-4 mr-2" /> Actualizar
+        </Button>
 
-      <Button
-        size="sm"
-        onClick={() => setOpenDlg(true)}
-        className="h-9 w-full sm:w-auto"
-      >
-        <Plus className="h-3.5 w-3.5 mr-2" /> Abrir
-      </Button>
-
-      {statusMeta.code === "OPEN" && (
         <Button
           size="sm"
-          onClick={() => setCloseDlg(true)}
-          variant="destructive"
-          className="h-9 w-full sm:w-auto"
+          onClick={() => setOpenDlg(true)}
+          className="h-10 flex-1 sm:flex-none bg-blue-600 hover:bg-blue-700 px-6 font-semibold shadow-sm"
         >
-          <Save className="h-3.5 w-3.5 mr-2" /> Cerrar
+          <Plus className="h-4 w-4 mr-2" /> Abrir Caja
         </Button>
-      )}
-    </div>
-  </div>
 
-  {/* 2. CONTENIDO PRINCIPAL */}
-  <div className="p-4 sm:p-6 space-y-5">
-
-    {/* Panel de Control y Totales */}
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-      <Card className="lg:col-span-1 shadow-sm bg-white">
-        <CardHeader className="pb-2 py-3 px-4">
-          <CardTitle className="text-sm font-medium text-gray-500">Sesión Actual</CardTitle>
-        </CardHeader>
-        <CardContent className="px-4 pb-4">
-          <Select value={currentId ? String(currentId) : undefined} onValueChange={setCurrentId}>
-            <SelectTrigger className="w-full font-medium">
-              <SelectValue placeholder="Seleccionar..." />
-            </SelectTrigger>
-            <SelectContent>
-              {sessions.map((s) => optVal(s.id) && (
-                <SelectItem key={s.id} value={String(s.id)}>
-                  #{s.id} · {toLimaDateTime(s.opened_at).split(",")[0]} ({normStatus(s.status).label})
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          <div className="mt-3 flex items-center justify-between">
-            <Badge variant={statusMeta.variant}>{statusMeta.label}</Badge>
-            <span className="text-xs text-gray-400">
-              {current ? toLimaDateTime(current.opened_at).split(",")[1] : ""}
-            </span>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Totales */}
-      {current && (
-        <div className="lg:col-span-2 grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <Card className="bg-white shadow-sm">
-            <CardContent className="p-4 flex flex-col justify-center h-full">
-              <span className="text-xs font-bold text-gray-500 uppercase">Ingresos</span>
-              <span className="text-xl font-bold text-green-600">{fmtCurrency(totals.ins)}</span>
-            </CardContent>
-          </Card>
-
-          <Card className="bg-white shadow-sm">
-            <CardContent className="p-4 flex flex-col justify-center h-full">
-              <span className="text-xs font-bold text-gray-500 uppercase">Egresos</span>
-              <span className="text-xl font-bold text-red-600">{fmtCurrency(totals.outs)}</span>
-            </CardContent>
-          </Card>
-
-          <Card className="bg-white shadow-sm ring-1 ring-blue-100">
-            <CardContent className="p-4 flex flex-col justify-center h-full">
-              <span className="text-xs font-bold text-blue-600 uppercase">Saldo Caja</span>
-              <span className="text-2xl font-black text-blue-800">{fmtCurrency(totals.balance)}</span>
-            </CardContent>
-          </Card>
-        </div>
-      )}
+        {statusMeta.code === "OPEN" && (
+          <Button
+            size="sm"
+            onClick={() => setCloseDlg(true)}
+            variant="destructive"
+            className="h-10 flex-1 sm:flex-none px-6 font-semibold shadow-sm"
+          >
+            <Save className="h-4 w-4 mr-2" /> Cerrar Caja
+          </Button>
+        )}
+      </div>
     </div>
 
-    {/* Formulario */}
-    {statusMeta.code === "OPEN" && current && (
-      <Card className="border-l-4 border-l-blue-600 shadow-sm bg-white">
-        <CardContent className="p-4 flex flex-col md:flex-row gap-3 items-end">
-          <div className="w-full md:w-32">
-            <Label className="text-xs mb-1.5 block">Tipo</Label>
-            <Select value={newMov.type} onValueChange={(v) => setNewMov({ ...newMov, type: v })}>
-              <SelectTrigger>
-                <SelectValue />
+    {/* 2. CONTENIDO PRINCIPAL - Sobre el nuevo fondo azul */}
+    <div className="w-full px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+        <Card className="lg:col-span-1 shadow-lg border-none bg-white/95 backdrop-blur-sm">
+          <div className="h-1 bg-slate-400 w-full" />
+          <CardHeader className="pb-2 pt-4 px-5">
+            <CardTitle className="text-[11px] font-bold text-slate-500 uppercase tracking-widest text-center">Sesión de Caja</CardTitle>
+          </CardHeader>
+          <CardContent className="px-5 pb-5 space-y-4">
+            <Select value={currentId ? String(currentId) : undefined} onValueChange={setCurrentId}>
+              <SelectTrigger className="w-full h-11 border-slate-200 text-base font-medium">
+                <SelectValue placeholder="Seleccionar sesión..." />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="IN">
-                  <span className="text-green-600 font-bold">Ingreso (+)</span>
-                </SelectItem>
-                <SelectItem value="OUT">
-                  <span className="text-red-600 font-bold">Egreso (-)</span>
-                </SelectItem>
+                {sessions.map((s) => optVal(s.id) && (
+                  <SelectItem key={s.id} value={String(s.id)} className="py-2.5">
+                    <span className="font-bold text-blue-700">#{s.id}</span> — {toLimaDateTime(s.opened_at).split(",")[0]}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
+
+            <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+              <Badge variant={statusMeta.variant} className="text-[10px] font-bold uppercase tracking-wider">
+                {statusMeta.label}
+              </Badge>
+              <div className="flex flex-col items-end text-right">
+                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-tighter">Apertura</span>
+                <span className="text-sm font-mono font-semibold text-slate-700">
+                  {current ? toLimaDateTime(current.opened_at).split(",")[1] : "--:--"}
+                </span>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {current && (
+          <div className="lg:col-span-4 grid grid-cols-1 sm:grid-cols-3 gap-6">
+            <Card className="bg-white/95 border-none shadow-lg border-b-4 border-b-emerald-500 flex flex-col justify-center">
+              <CardContent className="p-6">
+                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Ingresos</p>
+                <h3 className="text-3xl font-semibold text-emerald-600 tracking-tight">{fmtCurrency(totals.ins)}</h3>
+              </CardContent>
+            </Card>
+
+            <Card className="bg-white/95 border-none shadow-lg border-b-4 border-b-rose-500 flex flex-col justify-center">
+              <CardContent className="p-6">
+                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Egresos</p>
+                <h3 className="text-3xl font-semibold text-rose-600 tracking-tight">{fmtCurrency(totals.outs)}</h3>
+              </CardContent>
+            </Card>
+
+            <Card className="bg-white border-none shadow-xl ring-2 ring-blue-500/20 border-b-4 border-b-blue-600 flex flex-col justify-center">
+              <CardContent className="p-6">
+                <p className="text-[10px] font-bold text-blue-600 uppercase tracking-widest mb-1">Saldo Neto</p>
+                <h3 className="text-4xl font-bold text-blue-900 tracking-tight">{fmtCurrency(totals.balance)}</h3>
+              </CardContent>
+            </Card>
           </div>
-
-          <div className="w-full md:w-40">
-            <Label className="text-xs mb-1.5 block">Monto</Label>
-            <Input
-              type="number"
-              className="font-bold text-right"
-              placeholder="0.00"
-              value={newMov.amount}
-              onChange={(e) => setNewMov({ ...newMov, amount: e.target.value })}
-              onKeyDown={(e) => e.key === "Enter" && addMovement()}
-            />
-          </div>
-
-          <div className="w-full flex-1">
-            <Label className="text-xs mb-1.5 block">Concepto</Label>
-            <Input
-              placeholder="Descripción de la operación..."
-              value={newMov.concept}
-              onChange={(e) => setNewMov({ ...newMov, concept: e.target.value })}
-              onKeyDown={(e) => e.key === "Enter" && addMovement()}
-            />
-          </div>
-
-          <Button
-            className="w-full md:w-auto min-w-[100px] bg-blue-600 hover:bg-blue-700"
-            onClick={addMovement}
-            disabled={busyMov}
-          >
-            {busyMov ? <Loader2 className="animate-spin h-4 w-4" /> : "Guardar"}
-          </Button>
-        </CardContent>
-      </Card>
-    )}
-
-    {/* --- TABLA RESPONSIVE (scroll horizontal + alto móvil) --- */}
-    <Card className="shadow-sm border border-gray-200 bg-white mt-4 flex flex-col">
-      <div className="px-4 py-3 border-b flex justify-between items-center bg-gray-50">
-        <span className="text-xs font-bold text-gray-700 uppercase tracking-wider">
-          Movimientos ({movs.length})
-        </span>
-        <Badge variant="secondary" className="bg-white border text-gray-600 shadow-sm">
-          Historial
-        </Badge>
+        )}
       </div>
 
-      <div className="w-full overflow-x-auto">
-        <div className="w-full max-h-[55vh] sm:max-h-[400px] overflow-y-auto relative border-b rounded-b-lg bg-white">
-          <table className="w-full min-w-[720px] text-sm text-left border-collapse">
-            <thead className="text-xs text-gray-500 uppercase bg-gray-100 sticky top-0 z-20 shadow-sm ring-1 ring-gray-200/50">
-              <tr>
-                <th className="px-4 py-3 font-semibold w-24 bg-gray-100 border-b">Hora</th>
-                <th className="px-4 py-3 font-semibold w-24 bg-gray-100 border-b">Tipo</th>
-                <th className="px-4 py-3 font-semibold bg-gray-100 border-b">Concepto</th>
-                <th className="px-4 py-3 font-semibold text-right w-32 bg-gray-100 border-b">Monto</th>
-              </tr>
-            </thead>
+      {statusMeta.code === "OPEN" && current && (
+        <Card className="border-l-4 border-l-blue-400 shadow-lg bg-white/95 w-full">
+          <CardContent className="p-6 flex flex-col md:flex-row gap-6 items-end">
+            <div className="w-full md:w-52">
+              <Label className="text-[10px] font-bold text-slate-500 uppercase mb-2 block">Tipo Operación</Label>
+              <Select value={newMov.type} onValueChange={(v) => setNewMov({ ...newMov, type: v })}>
+                <SelectTrigger className="h-11 font-medium border-slate-300 focus:ring-blue-500/20">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="IN" className="py-2"><span className="text-green-600 font-semibold">Ingreso (+)</span></SelectItem>
+                  <SelectItem value="OUT" className="py-2"><span className="text-red-600 font-semibold">Egreso (-)</span></SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
 
-            <tbody className="divide-y divide-gray-100 bg-white">
-              {movs.map((m, index) => {
-                const tmeta = normType(m.type);
-                let timeStr = "-";
-                try {
-                  timeStr = toLimaDateTime(m.date).split(" ")[1];
-                } catch (e) {
-                  timeStr = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-                }
+            <div className="w-full md:w-56">
+              <Label className="text-[10px] font-bold text-slate-500 uppercase mb-2 block">Monto (S/)</Label>
+              <Input
+                type="number"
+                className="h-11 font-semibold text-lg text-right border-slate-300"
+                placeholder="0.00"
+                value={newMov.amount}
+                onChange={(e) => setNewMov({ ...newMov, amount: e.target.value })}
+                onKeyDown={(e) => e.key === "Enter" && addMovement()}
+              />
+            </div>
 
-                return (
-                  <tr key={m.id || index} className="hover:bg-blue-50/40 transition-colors">
-                    <td className="px-4 py-3 whitespace-nowrap text-gray-500 font-mono text-xs border-r border-transparent">
-                      {timeStr}
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      <Badge
-                        variant="outline"
-                        className={`text-[10px] px-2 py-0.5 border ${
-                          tmeta.code === "IN"
-                            ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                            : "bg-rose-50 text-rose-700 border-rose-200"
-                        }`}
-                      >
-                        {tmeta.label}
-                      </Badge>
-                    </td>
-                    <td className="px-4 py-3 text-gray-700 font-medium">
-                      {safeText(m.concept)}
-                    </td>
-                    <td className={`px-4 py-3 text-right font-bold whitespace-nowrap ${tmeta.code === "IN" ? "text-emerald-600" : "text-rose-600"}`}>
-                      {tmeta.code === "IN" ? "+" : "-"} {fmtCurrency(m.amount)}
+            <div className="w-full flex-1">
+              <Label className="text-[10px] font-bold text-slate-500 uppercase mb-2 block">Concepto o Descripción</Label>
+              <Input
+                className="h-11 font-medium border-slate-300"
+                placeholder="Ej. Pago de matrícula, servicios, etc."
+                value={newMov.concept}
+                onChange={(e) => setNewMov({ ...newMov, concept: e.target.value })}
+                onKeyDown={(e) => e.key === "Enter" && addMovement()}
+              />
+            </div>
+
+            <Button
+              className="w-full md:w-auto h-11 px-10 bg-blue-600 hover:bg-blue-700 font-semibold shadow-sm"
+              onClick={addMovement}
+              disabled={busyMov}
+            >
+              {busyMov ? <Loader2 className="animate-spin h-5 w-5" /> : "Guardar Movimiento"}
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* TABLA - EXPANDIDA CON FONDO CONTRASTADO */}
+      <Card className="shadow-2xl border-none bg-white overflow-hidden w-full">
+        <div className="px-6 py-4 flex justify-between items-center bg-slate-50 border-b">
+          <h3 className="text-xs font-bold text-slate-700 uppercase tracking-widest">
+            Historial de Movimientos — <span className="text-blue-600 font-bold">{movs.length} registros</span>
+          </h3>
+          <Badge variant="outline" className="bg-white text-slate-400 font-bold text-[9px] uppercase border-slate-200">Libro Diario</Badge>
+        </div>
+
+        <div className="w-full overflow-x-auto">
+          <div className="w-full max-h-[650px] overflow-y-auto relative custom-scrollbar">
+            <table className="w-full text-sm text-left border-collapse">
+              <thead className="text-[10px] text-slate-400 font-bold uppercase tracking-wider bg-slate-50 sticky top-0 z-20 border-b border-slate-100">
+                <tr>
+                  <th className="px-6 py-4 w-32">Hora</th>
+                  <th className="px-6 py-4 w-44">Operación</th>
+                  <th className="px-6 py-4">Concepto</th>
+                  <th className="px-6 py-4 text-right w-64 font-bold">Monto</th>
+                </tr>
+              </thead>
+
+              <tbody className="divide-y divide-slate-50 bg-white text-slate-600">
+                {movs.map((m, index) => {
+                  const tmeta = normType(m.type);
+                  let timeStr = "--:--";
+                  try { timeStr = toLimaDateTime(m.date).split(" ")[1]; } catch (e) {}
+
+                  return (
+                    <tr key={m.id || index} className="hover:bg-slate-50 transition-colors">
+                      <td className="px-6 py-4 whitespace-nowrap font-mono text-xs text-slate-400 font-medium">
+                        {timeStr}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-xs">
+                        <Badge
+                          variant="outline"
+                          className={`font-bold px-3 py-1 border ${
+                            tmeta.code === "IN"
+                              ? "bg-emerald-50 text-emerald-700 border-emerald-100"
+                              : "bg-rose-50 text-rose-700 border-rose-100"
+                          }`}
+                        >
+                          {tmeta.label}
+                        </Badge>
+                      </td>
+                      <td className="px-6 py-4 font-medium uppercase text-[11px] tracking-tight text-slate-700">
+                        {safeText(m.concept)}
+                      </td>
+                      <td className={`px-6 py-4 text-right font-semibold text-lg tabular-nums ${tmeta.code === "IN" ? "text-emerald-600" : "text-rose-600"}`}>
+                        {tmeta.code === "IN" ? "+" : "-"} {fmtCurrency(m.amount)}
+                      </td>
+                    </tr>
+                  );
+                })}
+
+                {movs.length === 0 && (
+                  <tr>
+                    <td colSpan={4} className="h-48 text-center text-slate-400 italic font-medium">
+                      No se han registrado movimientos en esta sesión de caja.
                     </td>
                   </tr>
-                );
-              })}
-
-              {movs.length === 0 && (
-                <tr>
-                  <td colSpan={4} className="h-40 text-center text-gray-400">
-                    <div className="flex flex-col items-center justify-center gap-2">
-                      <span className="text-sm italic">Sin movimientos registrados</span>
-                    </div>
-                  </td>
-                </tr>
-              )}
-
-              {movs.length > 0 && <tr className="h-8 bg-transparent border-none"></tr>}
-            </tbody>
-          </table>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
-      </div>
-    </Card>
-  </div>
-
-      {/* MODALES */}
-      <Dialog open={openDlg} onOpenChange={(v) => !busyOpen && setOpenDlg(v)}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Abrir Caja</DialogTitle></DialogHeader>
-          <div className="py-2 space-y-3">
-             <div className="grid gap-1.5"><Label>Monto Inicial</Label><Input type="number" step="0.01" value={openForm.opening_amount} onChange={e=>setOpenForm({...openForm, opening_amount: e.target.value})} /></div>
-             <div className="grid gap-1.5"><Label>Nota</Label><Input value={openForm.note} onChange={e=>setOpenForm({...openForm, note: e.target.value})} /></div>
-          </div>
-          <DialogFooter><Button onClick={openSession} disabled={busyOpen}>Abrir Turno</Button></DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={closeDlg} onOpenChange={(v) => !busyClose && setCloseDlg(v)}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Cerrar Caja</DialogTitle></DialogHeader>
-          <div className="py-2 space-y-4">
-            <div className="bg-slate-100 p-3 rounded text-center border border-slate-200">
-                <div className="text-xs text-slate-500 uppercase tracking-wider mb-1">Saldo Calculado</div>
-                <div className="text-2xl font-bold text-slate-800">{fmtCurrency(totals.balance)}</div>
-            </div>
-            <div className="grid gap-1.5">
-                <Label>Efectivo Real (Arqueo)</Label>
-                <Input type="number" step="0.01" placeholder={String(totals.balance)} value={closeForm.closing_amount} onChange={e=>setCloseForm({...closeForm, closing_amount: e.target.value})} />
-            </div>
-            <div className="grid gap-1.5"><Label>Observaciones</Label><Input value={closeForm.note} onChange={e=>setCloseForm({...closeForm, note: e.target.value})} /></div>
-          </div>
-          <DialogFooter><Button variant="destructive" onClick={closeSession} disabled={busyClose}>Cerrar Turno</Button></DialogFooter>
-        </DialogContent>
-      </Dialog>
+      </Card>
     </div>
-  );
-}
+  </div>
+);
+};

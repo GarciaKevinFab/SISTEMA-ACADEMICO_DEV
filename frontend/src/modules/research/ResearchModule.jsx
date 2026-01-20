@@ -267,134 +267,192 @@ const ProjectsManagement = () => {
     };
 
     return (
-        <div className="p-4 sm:p-6 space-y-6">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div>
-                    <h2 className="text-2xl font-bold text-black">Proyectos de Investigación</h2>
-                    <p className="text-sm text-gray-600">
-                        CRUD completo + cronograma, productos y evaluación
-                    </p>
-                </div>
-
-                <div className="flex flex-wrap gap-2 items-center">
-                    <Select value={statusFilter} onValueChange={setStatusFilter}>
-                        <SelectTrigger className="w-full sm:w-44">
-                            <SelectValue placeholder="Estado" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="ALL">Todos los estados</SelectItem>
-                            {Object.keys(STATUS_CFG).map((s) => (
-                                <SelectItem key={s} value={s}>
-                                    {STATUS_CFG[s].label}
-                                </SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
-
-                    <div className="relative w-full sm:w-64">
-                        <Input
-                            className="pl-9 w-full"
-                            placeholder="Buscar por título, código, línea, asesor…"
-                            value={search}
-                            onChange={(e) => setSearch(e.target.value)}
-                        />
-                        <div className="absolute left-3 top-2.5">
-                            <SearchIcon className="h-4 w-4 text-gray-400" />
-                        </div>
+    <div className="p-4 sm:p-8 space-y-8 animate-in fade-in duration-500">
+        {/* Header Section con mejor espaciado */}
+        <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6 border-b border-gray-100 pb-6">
+            <div className="space-y-1">
+                <div className="flex items-center gap-2 text-blue-600 mb-1">
+                    <div className="p-2 bg-blue-50 rounded-lg">
+                        <SearchIcon className="h-5 w-5" />
                     </div>
-
-                    <Button onClick={openCreate} className="w-full sm:w-auto bg-blue-600 hover:bg-blue-700">
-                        <Plus className="h-4 w-4 mr-2" />
-                        Nuevo Proyecto
-                    </Button>
+                    <span className="text-xs font-bold uppercase tracking-wider">Gestión Académica</span>
                 </div>
+                <h2 className="text-3xl font-extrabold text-slate-900 tracking-tight">
+                    Proyectos de Investigación
+                </h2>
+                <p className="text-slate-500 font-medium flex items-center gap-2">
+                    <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                    Administración de cronogramas, productos y evaluaciones
+                </p>
             </div>
 
-            <Card className="rounded-2xl border shadow-sm overflow-hidden bg-white/50">
-                <CardContent className="p-0">
-                    <div className="overflow-x-auto">
-                        <table className="w-full min-w-[1000px]">
-                            <thead className="table-header-background">
-                                <tr>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-800 uppercase">Código</th><th className="px-6 py-3 text-left text-xs font-medium text-gray-800 uppercase">Título</th><th className="px-6 py-3 text-left text-xs font-medium text-gray-800 uppercase">Línea</th><th className="px-6 py-3 text-left text-xs font-medium text-gray-800 uppercase">Asesor</th><th className="px-6 py-3 text-left text-xs font-medium text-gray-800 uppercase">Fechas</th><th className="px-6 py-3 text-left text-xs font-medium text-gray-800 uppercase">Estado</th><th className="px-6 py-3 text-left text-xs font-medium text-gray-800 uppercase">Acciones</th>
-                                </tr>
-                            </thead>
+            <div className="flex flex-col sm:flex-row gap-3 items-center w-full lg:w-auto">
+                {/* Filtros con sombras suaves y transiciones */}
+                <Select value={statusFilter} onValueChange={setStatusFilter}>
+                    <SelectTrigger className="w-full sm:w-48 bg-white border-slate-200 shadow-sm transition-all hover:border-blue-300 focus:ring-blue-100 rounded-xl">
+                        <SelectValue placeholder="Filtrar por Estado" />
+                    </SelectTrigger>
+                    <SelectContent className="rounded-xl border-slate-200 shadow-xl">
+                        <SelectItem value="ALL" className="font-medium text-slate-600">Todos los estados</SelectItem>
+                        {Object.keys(STATUS_CFG).map((s) => (
+                            <SelectItem key={s} value={s} className="font-medium text-slate-700">
+                                {STATUS_CFG[s].label}
+                            </SelectItem>
+                        ))}
+                    </SelectContent>
+                </Select>
 
-                            <tbody className="divide-y bg-white">
-                                {filtered.map((p) => (
-                                    <tr key={p.id} className="hover:bg-gray-50">
-                                        <td className="px-6 py-3 text-sm text-gray-700">{p.code || `P-${p.id}`}</td>
-                                        <td className="px-6 py-3">
-                                            <div className="font-medium text-gray-800">{p.title}</div>
-                                            <div className="text-xs text-gray-500">{p.keywords}</div>
-                                        </td>
-                                        <td className="px-6 py-3 text-sm text-gray-700">{p.line_name || "-"}</td>
-                                        <td className="px-6 py-3 text-sm text-gray-700">{p.advisor_name || "-"}</td>
-                                        <td className="px-6 py-3 text-xs text-gray-600 whitespace-nowrap">
-                                            {(p.start_date && new Date(p.start_date).toLocaleDateString()) || "-"}{" — "}
-                                            {(p.end_date && new Date(p.end_date).toLocaleDateString()) || "-"}
-                                        </td>
-                                        <td className="px-6 py-3">
-                                            <Badge variant={STATUS_CFG[p.status]?.badge || "secondary"} className="text-xs">
-                                                {STATUS_CFG[p.status]?.label || p.status}
-                                            </Badge>
-                                        </td>
-                                        <td className="px-6 py-3">
-                                            <div className="flex gap-2">
-                                                <Button size="sm" variant="outline" onClick={() => openDetail(p)} title="Ver detalle">
-                                                    <Eye className="h-4 w-4" />
-                                                </Button>
-                                                <Button size="sm" variant="outline" onClick={() => openEdit(p)} title="Editar">
-                                                    <Edit3 className="h-4 w-4" />
-                                                </Button>
-                                                <AlertDialog>
-                                                    <AlertDialogTrigger asChild>
-                                                        <Button size="sm" variant="outline" title="Eliminar">
-                                                            <Trash2 className="h-4 w-4" />
-                                                        </Button>
-                                                    </AlertDialogTrigger>
-
-                                                    <AlertDialogContent className="max-w-[92vw] sm:max-w-md">
-                                                        <AlertDialogHeader>
-                                                            <AlertDialogTitle>¿Eliminar proyecto?</AlertDialogTitle>
-                                                            <AlertDialogDescription>
-                                                                Esta acción no se puede deshacer. Se eliminará el proyecto{" "}
-                                                                <span className="font-semibold">{p.title}</span>.
-                                                            </AlertDialogDescription>
-                                                        </AlertDialogHeader>
-
-                                                        <AlertDialogFooter className="flex-col sm:flex-row gap-2">
-                                                            <AlertDialogCancel className="w-full sm:w-auto">Cancelar</AlertDialogCancel>
-                                                            <AlertDialogAction
-                                                                className="w-full sm:w-auto bg-red-600 hover:bg-red-700"
-                                                                onClick={() => remove(p)}
-                                                            >
-                                                                Sí, eliminar
-                                                            </AlertDialogAction>
-                                                        </AlertDialogFooter>
-                                                    </AlertDialogContent>
-                                                </AlertDialog>
-
-                                                {p.status !== "APPROVED" && (
-                                                    <Button size="sm" variant="outline" onClick={() => changeStatus(p, "APPROVED")} title="Aprobar">
-                                                        <CheckCircle className="h-4 w-4" />
-                                                    </Button>
-                                                )}
-                                                {p.status !== "REJECTED" && (
-                                                    <Button size="sm" variant="outline" onClick={() => changeStatus(p, "REJECTED")} title="Rechazar">
-                                                        <XCircle className="h-4 w-4" />
-                                                    </Button>
-                                                )}
-                                            </div>
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
+                <div className="relative w-full sm:w-80 group">
+                    <Input
+                        className="pl-10 w-full bg-white border-slate-200 shadow-sm transition-all hover:border-blue-300 focus:ring-blue-100 rounded-xl placeholder:text-slate-400"
+                        placeholder="Título, código, línea..."
+                        value={search}
+                        onChange={(e) => setSearch(e.target.value)}
+                    />
+                    <div className="absolute left-3.5 top-2.5 transition-colors group-focus-within:text-blue-500 text-slate-400">
+                        <SearchIcon className="h-4.5 w-4.5" />
                     </div>
-                </CardContent>
-            </Card>
+                </div>
 
+                <Button 
+                    onClick={openCreate} 
+                    className="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-200 transition-all active:scale-95 rounded-xl px-6 font-semibold"
+                >
+                    <Plus className="h-5 w-5 mr-2" />
+                    Nuevo Proyecto
+                </Button>
+            </div>
+        </div>
+
+        {/* Card Table con estilo Glassmorphism y bordes suavizados */}
+        <Card className="rounded-[2rem] border-slate-200 shadow-xl shadow-slate-200/50 overflow-hidden bg-white/70 backdrop-blur-md">
+            <CardContent className="p-0">
+                <div className="overflow-x-auto">
+                    <table className="w-full min-w-[1000px] border-collapse">
+                        <thead>
+                            <tr className="bg-slate-50/80 border-b border-slate-100">
+                                <th className="px-6 py-5 text-left text-[11px] font-bold text-slate-500 uppercase tracking-[0.1em]">Código</th>
+                                <th className="px-6 py-5 text-left text-[11px] font-bold text-slate-500 uppercase tracking-[0.1em]">Proyecto Detalle</th>
+                                <th className="px-6 py-5 text-left text-[11px] font-bold text-slate-500 uppercase tracking-[0.1em]">Línea / Asesor</th>
+                                <th className="px-6 py-5 text-left text-[11px] font-bold text-slate-500 uppercase tracking-[0.1em]">Vigencia</th>
+                                <th className="px-6 py-5 text-left text-[11px] font-bold text-slate-500 uppercase tracking-[0.1em]">Estado</th>
+                                <th className="px-6 py-5 text-center text-[11px] font-bold text-slate-500 uppercase tracking-[0.1em]">Operaciones</th>
+                            </tr>
+                        </thead>
+
+                        <tbody className="divide-y divide-slate-50 bg-transparent">
+                            {filtered.map((p) => (
+                                <tr key={p.id} className="group hover:bg-blue-50/30 transition-all duration-200">
+                                    <td className="px-6 py-4">
+                                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-bold bg-slate-100 text-slate-600 border border-slate-200">
+                                            {p.code || `P-${p.id}`}
+                                        </span>
+                                    </td>
+                                    <td className="px-6 py-4">
+                                        <div className="max-w-xs">
+                                            <div className="font-bold text-slate-800 line-clamp-1 group-hover:text-blue-700 transition-colors uppercase text-sm">
+                                                {p.title}
+                                            </div>
+                                            <div className="text-[11px] text-slate-400 mt-1 italic line-clamp-1">
+                                                {p.keywords}
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td className="px-6 py-4">
+                                        <div className="flex flex-col gap-1">
+                                            <div className="text-xs font-semibold text-slate-700 flex items-center gap-1">
+                                                <div className="w-1 h-1 bg-blue-400 rounded-full"></div>
+                                                {p.line_name || "Sin línea"}
+                                            </div>
+                                            <div className="text-[11px] text-slate-500 flex items-center gap-1">
+                                                <Edit3 className="h-3 w-3 opacity-50" />
+                                                {p.advisor_name || "Sin asesor"}
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td className="px-6 py-4">
+                                        <div className="flex items-center gap-2 text-slate-600 bg-slate-50 w-fit px-3 py-1 rounded-full border border-slate-100">
+                                            <span className="text-[10px] font-bold uppercase text-slate-400">🗓</span>
+                                            <span className="text-xs font-medium tracking-tight">
+                                                {(p.start_date && new Date(p.start_date).toLocaleDateString()) || "-"}
+                                            </span>
+                                            <span className="text-slate-300">|</span>
+                                            <span className="text-xs font-medium tracking-tight">
+                                                {(p.end_date && new Date(p.end_date).toLocaleDateString()) || "-"}
+                                            </span>
+                                        </div>
+                                    </td>
+                                    <td className="px-6 py-4">
+                                        <Badge 
+                                            variant={STATUS_CFG[p.status]?.badge || "secondary"} 
+                                            className="text-[10px] font-black uppercase px-3 py-1 rounded-full shadow-sm ring-2 ring-white"
+                                        >
+                                            {STATUS_CFG[p.status]?.label || p.status}
+                                        </Badge>
+                                    </td>
+                                    <td className="px-6 py-4">
+                                        <div className="flex justify-center items-center gap-1.5 opacity-60 group-hover:opacity-100 transition-opacity">
+                                            <Button size="icon" variant="ghost" className="h-9 w-9 hover:bg-white hover:text-blue-600 shadow-none rounded-full transition-all active:scale-90 border-transparent hover:border-slate-100" onClick={() => openDetail(p)} title="Ver detalle">
+                                                <Eye className="h-4.5 w-4.5" />
+                                            </Button>
+                                            
+                                            <Button size="icon" variant="ghost" className="h-9 w-9 hover:bg-white hover:text-amber-600 shadow-none rounded-full transition-all active:scale-90" onClick={() => openEdit(p)} title="Editar">
+                                                <Edit3 className="h-4.5 w-4.5" />
+                                            </Button>
+
+                                            <AlertDialog>
+                                                <AlertDialogTrigger asChild>
+                                                    <Button size="icon" variant="ghost" className="h-9 w-9 hover:bg-red-50 hover:text-red-600 shadow-none rounded-full transition-all active:scale-90" title="Eliminar">
+                                                        <Trash2 className="h-4.5 w-4.5" />
+                                                    </Button>
+                                                </AlertDialogTrigger>
+                                                <AlertDialogContent className="rounded-3xl border-none shadow-2xl p-8 bg-white/95 backdrop-blur-sm">
+                                                    <AlertDialogHeader>
+                                                        <div className="w-12 h-12 bg-red-100 rounded-2xl flex items-center justify-center text-red-600 mb-4">
+                                                            <Trash2 className="h-6 w-6" />
+                                                        </div>
+                                                        <AlertDialogTitle className="text-2xl font-bold text-slate-900">¿Confirmar eliminación?</AlertDialogTitle>
+                                                        <AlertDialogDescription className="text-slate-500 text-base">
+                                                            Esta acción eliminará de forma permanente el proyecto investigación: 
+                                                            <div className="mt-2 p-3 bg-slate-50 rounded-xl border border-slate-100 font-bold text-slate-800 text-center">
+                                                                {p.title}
+                                                            </div>
+                                                        </AlertDialogDescription>
+                                                    </AlertDialogHeader>
+                                                    <AlertDialogFooter className="mt-8 gap-3">
+                                                        <AlertDialogCancel className="rounded-xl border-slate-200 font-semibold px-6 hover:bg-slate-50">Mantener Proyecto</AlertDialogCancel>
+                                                        <AlertDialogAction
+                                                            className="rounded-xl bg-red-600 hover:bg-red-700 font-semibold px-6 shadow-lg shadow-red-200 transition-all active:scale-95"
+                                                            onClick={() => remove(p)}
+                                                        >
+                                                            Eliminar Ahora
+                                                        </AlertDialogAction>
+                                                    </AlertDialogFooter>
+                                                </AlertDialogContent>
+                                            </AlertDialog>
+
+                                            <div className="w-px h-4 bg-slate-200 mx-1"></div>
+
+                                            {p.status !== "APPROVED" && (
+                                                <Button size="icon" variant="ghost" className="h-9 w-9 text-green-600 hover:bg-green-50 rounded-full transition-all active:scale-90" onClick={() => changeStatus(p, "APPROVED")} title="Aprobar">
+                                                    <CheckCircle className="h-4.5 w-4.5" />
+                                                </Button>
+                                            )}
+                                            {p.status !== "REJECTED" && (
+                                                <Button size="icon" variant="ghost" className="h-9 w-9 text-red-600 hover:bg-red-50 rounded-full transition-all active:scale-90" onClick={() => changeStatus(p, "REJECTED")} title="Rechazar">
+                                                    <XCircle className="h-4.5 w-4.5" />
+                                                </Button>
+                                            )}
+                                        </div>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            </CardContent>
+        </Card>
+);
             {/* create modal */}
             <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
                 <DialogContent className="w-[95vw] sm:max-w-3xl max-h-[90dvh] overflow-y-auto">
@@ -1268,79 +1326,77 @@ const CatalogsTab = () => {
     };
 
     return (
-        <div className="space-y-6 pb-24 sm:pb-6">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+    <div className="space-y-8 pb-24 sm:pb-8 animate-in fade-in duration-500">
+        {/* SECCIÓN: LÍNEAS DE INVESTIGACIÓN */}
+        <div className="space-y-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between border-b border-gray-100 pb-4">
                 <div>
-                    <h3 className="text-xl sm:text-2xl font-bold text-black">Líneas de investigación</h3>
-                    <p className="text-sm text-gray-600">Base para clasificar proyectos</p>
+                    <h3 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
+                        <div className="h-2 w-2 bg-blue-600 rounded-full" />
+                        Líneas de investigación
+                    </h3>
+                    <p className="text-sm text-slate-500 font-medium">Base para clasificar proyectos de investigación científica</p>
                 </div>
 
-                <Button onClick={openCreateLine} className="w-full sm:w-auto justify-center">
+                <Button onClick={openCreateLine} className="w-full sm:w-auto justify-center shadow-md hover:shadow-lg transition-all active:scale-95">
                     <Plus className="h-4 w-4 mr-2" />
                     Nueva línea
                 </Button>
             </div>
 
-            <Card>
+            <Card className="overflow-hidden border-slate-200 shadow-sm rounded-xl">
                 <CardContent className="p-0">
                     {loading ? (
-                        <div className="flex items-center justify-center h-36">
-                            <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600" />
+                        <div className="flex flex-col items-center justify-center h-40 gap-3">
+                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
+                            <span className="text-xs text-slate-400 font-medium">Cargando líneas...</span>
                         </div>
                     ) : (
                         <div className="w-full overflow-x-auto">
                             <table className="w-full min-w-[420px]">
-                                <thead className="bg-slate-500 border-b">
+                                <thead className="bg-slate-50 border-b border-slate-100">
                                     <tr>
-                                        <th className="p-2 text-left text-black">Nombre</th><th className="p-2 text-left text-black w-[140px]">Acciones</th>
+                                        <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">Nombre de la Línea</th>
+                                        <th className="px-6 py-4 text-right text-xs font-bold text-slate-500 uppercase tracking-wider w-[120px]">Acciones</th>
                                     </tr>
                                 </thead>
 
-                                <tbody className="divide-y bg-white">
+                                <tbody className="divide-y divide-slate-50 bg-white">
                                     {lines.map((l) => (
-                                        <tr key={l.id}>
-                                            <td className="p-2 text-black whitespace-nowrap">{l.name}</td>
-                                            <td className="p-2">
-                                                <div className="flex gap-2 justify-start">
-                                                    <Button size="sm" variant="outline" className="h-9 w-9 p-0" onClick={() => openEditLine(l)}>
-                                                        <Edit3 className="h-4 w-4" />
+                                        <tr key={l.id} className="hover:bg-slate-50/50 transition-colors group">
+                                            <td className="px-6 py-4 text-sm font-semibold text-slate-700 whitespace-nowrap uppercase tracking-tight">{l.name}</td>
+                                            <td className="px-6 py-4">
+                                                <div className="flex gap-2 justify-end opacity-60 group-hover:opacity-100 transition-opacity">
+                                                    <Button size="sm" variant="outline" className="h-8 w-8 p-0 rounded-lg hover:bg-white hover:border-blue-300 hover:text-blue-600 shadow-sm" onClick={() => openEditLine(l)}>
+                                                        <Edit3 className="h-3.5 w-3.5" />
                                                     </Button>
                                                     <AlertDialog>
                                                         <AlertDialogTrigger asChild>
-                                                            <Button size="sm" variant="outline" className="h-9 w-9 p-0">
-                                                                <Trash2 className="h-4 w-4" />
+                                                            <Button size="sm" variant="outline" className="h-8 w-8 p-0 rounded-lg hover:bg-red-50 hover:border-red-200 hover:text-red-600 shadow-sm text-slate-400">
+                                                                <Trash2 className="h-3.5 w-3.5" />
                                                             </Button>
                                                         </AlertDialogTrigger>
-
-                                                        <AlertDialogContent className="max-w-[92vw] sm:max-w-md">
+                                                        <AlertDialogContent className="max-w-[92vw] sm:max-w-md rounded-2xl">
                                                             <AlertDialogHeader>
-                                                                <AlertDialogTitle>¿Eliminar línea?</AlertDialogTitle>
-                                                                <AlertDialogDescription>
-                                                                    Esta acción no se puede deshacer. Se eliminará la línea{" "}
-                                                                    <span className="font-semibold">{l.name}</span>.
+                                                                <AlertDialogTitle className="text-xl font-bold">¿Eliminar línea?</AlertDialogTitle>
+                                                                <AlertDialogDescription className="text-slate-500">
+                                                                    Esta acción no se puede deshacer. Se eliminará la línea registrada como: 
+                                                                    <span className="block mt-2 font-bold text-slate-900 bg-slate-100 p-2 rounded text-center uppercase tracking-wide">{l.name}</span>
                                                                 </AlertDialogDescription>
                                                             </AlertDialogHeader>
-
-                                                            <AlertDialogFooter className="flex-col sm:flex-row gap-2">
-                                                                <AlertDialogCancel className="w-full sm:w-auto">Cancelar</AlertDialogCancel>
-                                                                <AlertDialogAction
-                                                                    className="w-full sm:w-auto bg-red-600 hover:bg-red-700"
-                                                                    onClick={() => removeLine(l)}
-                                                                >
-                                                                    Sí, eliminar
-                                                                </AlertDialogAction>
+                                                            <AlertDialogFooter className="mt-4 gap-2">
+                                                                <AlertDialogCancel className="rounded-xl border-slate-200">Cancelar</AlertDialogCancel>
+                                                                <AlertDialogAction className="bg-red-600 hover:bg-red-700 rounded-xl" onClick={() => removeLine(l)}>Sí, eliminar</AlertDialogAction>
                                                             </AlertDialogFooter>
                                                         </AlertDialogContent>
                                                     </AlertDialog>
-
                                                 </div>
                                             </td>
                                         </tr>
                                     ))}
-
                                     {lines.length === 0 && (
                                         <tr>
-                                            <td className="p-4 text-center text-gray-500" colSpan={2}>Sin líneas</td>
+                                            <td className="p-12 text-center text-slate-400 italic text-sm" colSpan={2}>No se encontraron líneas de investigación registradas.</td>
                                         </tr>
                                     )}
                                 </tbody>
@@ -1349,103 +1405,86 @@ const CatalogsTab = () => {
                     )}
                 </CardContent>
             </Card>
+        </div>
 
-            <Dialog open={openLineForm} onOpenChange={setOpenLineForm}>
-                <DialogContent className="max-w-md">
-                    <DialogHeader>
-                        <DialogTitle>{lineEditing ? "Editar línea" : "Nueva línea"}</DialogTitle>
-                    </DialogHeader>
-
-                    <form onSubmit={saveLine} className="space-y-3">
-                        <div>
-                            <Label>Nombre</Label>
-                            <Input value={lineForm.name} onChange={(e) => setLineForm({ name: e.target.value })} required />
-                        </div>
-                        <div className="flex justify-end gap-2">
-                            <Button type="button" variant="outline" onClick={() => setOpenLineForm(false)}>Cancelar</Button>
-                            <Button type="submit">
-                                <Save className="h-4 w-4 mr-2" />
-                                Guardar
-                            </Button>
-                        </div>
-                    </form>
-                </DialogContent>
-            </Dialog>
-
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        {/* SECCIÓN: ASESORES */}
+        <div className="space-y-4 pt-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between border-b border-gray-100 pb-4">
                 <div>
-                    <h3 className="text-xl sm:text-2xl font-bold text-black">Asesores</h3>
-                    <p className="text-sm text-gray-600">Docentes/investigadores que asesoran proyectos</p>
+                    <h3 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
+                        <div className="h-2 w-2 bg-blue-600 rounded-full" />
+                        Asesores
+                    </h3>
+                    <p className="text-sm text-slate-500 font-medium">Docentes investigadores registrados para asesoría</p>
                 </div>
 
-                <Button onClick={openCreateAdvisor} className="w-full sm:w-auto justify-center">
+                <Button onClick={openCreateAdvisor} className="w-full sm:w-auto justify-center shadow-md hover:shadow-lg transition-all active:scale-95">
                     <Plus className="h-4 w-4 mr-2" />
                     Nuevo asesor
                 </Button>
             </div>
 
-            <Card>
+            <Card className="overflow-hidden border-slate-200 shadow-sm rounded-xl">
                 <CardContent className="p-0">
                     {loading ? (
-                        <div className="flex items-center justify-center h-36">
-                            <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600" />
+                        <div className="flex flex-col items-center justify-center h-40 gap-3">
+                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
+                            <span className="text-xs text-slate-400 font-medium">Cargando asesores...</span>
                         </div>
                     ) : (
                         <div className="overflow-x-auto">
-                            <table className="w-full">
-                                <thead className="bg-slate-500 border-b">
+                            <table className="w-full min-w-[600px]">
+                                <thead className="bg-slate-50 border-b border-slate-100">
                                     <tr>
-                                        <th className="p-2 text-left text-black">Nombre</th><th className="p-2 text-left text-black">Email</th><th className="p-2 text-left text-black">ORCID</th><th className="p-2 text-left text-black w-32">Acciones</th>
+                                        <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">Nombre del Docente</th>
+                                        <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">Email institucional</th>
+                                        <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">Código ORCID</th>
+                                        <th className="px-6 py-4 text-right text-xs font-bold text-slate-500 uppercase tracking-wider w-[120px]">Acciones</th>
                                     </tr>
                                 </thead>
 
-                                <tbody className="divide-y bg-white">
+                                <tbody className="divide-y divide-slate-50 bg-white">
                                     {advisors.map((a) => (
-                                        <tr key={a.id}>
-                                            <td className="p-2 text-black">{a.full_name}</td>
-                                            <td className="p-2 text-black">{a.email || "-"}</td>
-                                            <td className="p-2 text-black">{a.orcid || "-"}</td>
-                                            <td className="p-2">
-                                                <div className="flex gap-2">
-                                                    <Button size="sm" variant="outline" onClick={() => openEditAdvisor(a)}>
-                                                        <Edit3 className="h-4 w-4" />
+                                        <tr key={a.id} className="hover:bg-slate-50/50 transition-colors group">
+                                            <td className="px-6 py-4 text-sm font-bold text-slate-800 uppercase tracking-tight">{a.full_name}</td>
+                                            <td className="px-6 py-4 text-sm text-slate-500">{a.email || <span className="text-slate-300 italic">No asignado</span>}</td>
+                                            <td className="px-6 py-4">
+                                                {a.orcid ? (
+                                                    <span className="text-xs font-mono bg-blue-50 text-blue-700 px-2 py-1 rounded border border-blue-100">{a.orcid}</span>
+                                                ) : "-"}
+                                            </td>
+                                            <td className="px-6 py-4">
+                                                <div className="flex gap-2 justify-end opacity-60 group-hover:opacity-100 transition-opacity">
+                                                    <Button size="sm" variant="outline" className="h-8 w-8 p-0 rounded-lg hover:bg-white hover:border-blue-300 hover:text-blue-600 shadow-sm" onClick={() => openEditAdvisor(a)}>
+                                                        <Edit3 className="h-3.5 w-3.5" />
                                                     </Button>
                                                     <AlertDialog>
                                                         <AlertDialogTrigger asChild>
-                                                            <Button size="sm" variant="outline">
-                                                                <Trash2 className="h-4 w-4" />
+                                                            <Button size="sm" variant="outline" className="h-8 w-8 p-0 rounded-lg hover:bg-red-50 hover:border-red-200 hover:text-red-600 shadow-sm text-slate-400">
+                                                                <Trash2 className="h-3.5 w-3.5" />
                                                             </Button>
                                                         </AlertDialogTrigger>
-
-                                                        <AlertDialogContent className="max-w-[92vw] sm:max-w-md">
+                                                        <AlertDialogContent className="max-w-[92vw] sm:max-w-md rounded-2xl">
                                                             <AlertDialogHeader>
-                                                                <AlertDialogTitle>¿Eliminar asesor?</AlertDialogTitle>
-                                                                <AlertDialogDescription>
-                                                                    Esta acción no se puede deshacer. Se eliminará al asesor{" "}
-                                                                    <span className="font-semibold">{a.full_name}</span>.
+                                                                <AlertDialogTitle className="text-xl font-bold">¿Eliminar asesor?</AlertDialogTitle>
+                                                                <AlertDialogDescription className="text-slate-500">
+                                                                    Se eliminará el registro del docente:
+                                                                    <span className="block mt-2 font-bold text-slate-900 bg-slate-100 p-2 rounded text-center uppercase tracking-wide">{a.full_name}</span>
                                                                 </AlertDialogDescription>
                                                             </AlertDialogHeader>
-
-                                                            <AlertDialogFooter className="flex-col sm:flex-row gap-2">
-                                                                <AlertDialogCancel className="w-full sm:w-auto">Cancelar</AlertDialogCancel>
-                                                                <AlertDialogAction
-                                                                    className="w-full sm:w-auto bg-red-600 hover:bg-red-700"
-                                                                    onClick={() => removeAdvisor(a)}
-                                                                >
-                                                                    Sí, eliminar
-                                                                </AlertDialogAction>
+                                                            <AlertDialogFooter className="mt-4 gap-2">
+                                                                <AlertDialogCancel className="rounded-xl border-slate-200">Cancelar</AlertDialogCancel>
+                                                                <AlertDialogAction className="bg-red-600 hover:bg-red-700 rounded-xl" onClick={() => removeAdvisor(a)}>Sí, eliminar</AlertDialogAction>
                                                             </AlertDialogFooter>
                                                         </AlertDialogContent>
                                                     </AlertDialog>
-
                                                 </div>
                                             </td>
                                         </tr>
                                     ))}
-
                                     {advisors.length === 0 && (
                                         <tr>
-                                            <td className="p-4 text-center text-gray-500" colSpan={4}>Sin asesores</td>
+                                            <td className="p-12 text-center text-slate-400 italic text-sm" colSpan={4}>No se encontraron asesores registrados.</td>
                                         </tr>
                                     )}
                                 </tbody>
@@ -1454,41 +1493,61 @@ const CatalogsTab = () => {
                     )}
                 </CardContent>
             </Card>
-
-            <Dialog open={openAdvisorForm} onOpenChange={setOpenAdvisorForm}>
-                <DialogContent className="max-w-md">
-                    <DialogHeader>
-                        <DialogTitle>{advisorEditing ? "Editar asesor" : "Nuevo asesor"}</DialogTitle>
-                    </DialogHeader>
-
-                    <form onSubmit={saveAdvisor} className="space-y-3">
-                        <div>
-                            <Label>Nombre completo</Label>
-                            <Input value={advisorForm.full_name} onChange={(e) => setAdvisorForm({ ...advisorForm, full_name: e.target.value })} required />
-                        </div>
-
-                        <div>
-                            <Label>Email</Label>
-                            <Input type="email" value={advisorForm.email} onChange={(e) => setAdvisorForm({ ...advisorForm, email: e.target.value })} />
-                        </div>
-
-                        <div>
-                            <Label>ORCID</Label>
-                            <Input value={advisorForm.orcid} onChange={(e) => setAdvisorForm({ ...advisorForm, orcid: e.target.value })} />
-                        </div>
-
-                        <div className="flex justify-end gap-2">
-                            <Button type="button" variant="outline" onClick={() => setOpenAdvisorForm(false)}>Cancelar</Button>
-                            <Button type="submit">
-                                <Save className="h-4 w-4 mr-2" />
-                                Guardar
-                            </Button>
-                        </div>
-                    </form>
-                </DialogContent>
-            </Dialog>
         </div>
-    );
+
+        {/* MODAL LÍNEAS */}
+        <Dialog open={openLineForm} onOpenChange={setOpenLineForm}>
+            <DialogContent className="max-w-md rounded-2xl">
+                <DialogHeader>
+                    <DialogTitle className="text-xl font-bold">{lineEditing ? "Editar línea de investigación" : "Nueva línea de investigación"}</DialogTitle>
+                </DialogHeader>
+                <form onSubmit={saveLine} className="space-y-5 mt-2">
+                    <div className="space-y-2">
+                        <Label className="font-semibold text-slate-700">Nombre descriptivo</Label>
+                        <Input className="rounded-xl focus:ring-blue-500" placeholder="Ej: Educación Intercultural" value={lineForm.name} onChange={(e) => setLineForm({ name: e.target.value })} required />
+                    </div>
+                    <div className="flex justify-end gap-3 pt-2">
+                        <Button type="button" variant="ghost" onClick={() => setOpenLineForm(false)} className="rounded-xl">Cancelar</Button>
+                        <Button type="submit" className="rounded-xl px-6">
+                            <Save className="h-4 w-4 mr-2" />
+                            Guardar
+                        </Button>
+                    </div>
+                </form>
+            </DialogContent>
+        </Dialog>
+
+        {/* MODAL ASESORES */}
+        <Dialog open={openAdvisorForm} onOpenChange={setOpenAdvisorForm}>
+            <DialogContent className="max-w-md rounded-2xl">
+                <DialogHeader>
+                    <DialogTitle className="text-xl font-bold">{advisorEditing ? "Editar datos del asesor" : "Registrar nuevo asesor"}</DialogTitle>
+                </DialogHeader>
+                <form onSubmit={saveAdvisor} className="space-y-4 mt-2">
+                    <div className="space-y-1.5">
+                        <Label className="font-semibold text-slate-700">Nombre completo</Label>
+                        <Input className="rounded-xl" placeholder="Ej: Dr. Juan Pérez" value={advisorForm.full_name} onChange={(e) => setAdvisorForm({ ...advisorForm, full_name: e.target.value })} required />
+                    </div>
+                    <div className="space-y-1.5">
+                        <Label className="font-semibold text-slate-700">Email institucional</Label>
+                        <Input className="rounded-xl" type="email" placeholder="juan.perez@universidad.edu" value={advisorForm.email} onChange={(e) => setAdvisorForm({ ...advisorForm, email: e.target.value })} />
+                    </div>
+                    <div className="space-y-1.5">
+                        <Label className="font-semibold text-slate-700">ORCID (Opcional)</Label>
+                        <Input className="rounded-xl" placeholder="0000-0000-0000-0000" value={advisorForm.orcid} onChange={(e) => setAdvisorForm({ ...advisorForm, orcid: e.target.value })} />
+                    </div>
+                    <div className="flex justify-end gap-3 pt-3">
+                        <Button type="button" variant="ghost" onClick={() => setOpenAdvisorForm(false)} className="rounded-xl">Cancelar</Button>
+                        <Button type="submit" className="rounded-xl px-6">
+                            <Save className="h-4 w-4 mr-2" />
+                            Guardar
+                        </Button>
+                    </div>
+                </form>
+            </DialogContent>
+        </Dialog>
+    </div>
+);
 };
 
 /* =========================================================
@@ -1524,18 +1583,24 @@ const CallsModule = () => {
    MAIN MODULE
 ========================================================= */
 const ResearchModule = () => {
-    const [tab, setTab] = React.useState("projects");
+    const [tab, setTab] = React.useState("reports");
 
     return (
         <div className="p-6">
             <div className="rounded-3xl border p-4 md:p-6 shadow-sm" style={{ background: "rgba(255, 255, 255, 0.74)" }}>
                 <Tabs value={tab} onValueChange={setTab} className="space-y-6">
+                    
+                    {/* ===== MENÚ MÓVIL ===== */}
                     <div className="sm:hidden">
                         <div className="bg-slate-200/70 p-2 rounded-2xl">
                             <div className="flex items-center gap-2">
                                 <TabsList className="flex-1 bg-transparent p-0 shadow-none">
-                                    <TabsTrigger value="projects" className="w-full h-11 rounded-xl data-[state=active]:bg-white data-[state=active]:shadow">
-                                        Proyectos
+                                    {/* CAMBIO 2: El botón principal móvil ahora refleja la pestaña activa dinámicamente o fija en Reportes */}
+                                    <TabsTrigger value={tab} className="w-full h-11 rounded-xl data-[state=active]:bg-white data-[state=active]:shadow capitalize">
+                                        {tab === "reports" && "Reportes"}
+                                        {tab === "projects" && "Proyectos"}
+                                        {tab === "catalogs" && "Catálogos"}
+                                        {tab === "calls" && "Convocatorias"}
                                     </TabsTrigger>
                                 </TabsList>
 
@@ -1547,7 +1612,9 @@ const ResearchModule = () => {
                                     </DropdownMenuTrigger>
 
                                     <DropdownMenuContent align="end" className="w-52">
+                                        {/* CAMBIO 3: El dropdown muestra las opciones que no están seleccionadas */}
                                         <DropdownMenuItem onClick={() => setTab("reports")}>Reportes</DropdownMenuItem>
+                                        <DropdownMenuItem onClick={() => setTab("projects")}>Proyectos</DropdownMenuItem>
                                         <DropdownMenuItem onClick={() => setTab("catalogs")}>Catálogos</DropdownMenuItem>
                                         <DropdownMenuItem onClick={() => setTab("calls")}>Convocatorias</DropdownMenuItem>
                                     </DropdownMenuContent>
@@ -1556,10 +1623,11 @@ const ResearchModule = () => {
                         </div>
                     </div>
 
+                    {/* ===== MENÚ ESCRITORIO ===== */}
                     <div className="hidden sm:block">
                         <TabsList className="w-full flex gap-2 bg-slate-200/70 p-2 rounded-2xl">
-                            <TabsTrigger value="projects" className="rounded-xl data-[state=active]:bg-white data-[state=active]:shadow">Proyectos</TabsTrigger>
                             <TabsTrigger value="reports" className="rounded-xl data-[state=active]:bg-white data-[state=active]:shadow">Reportes</TabsTrigger>
+                            <TabsTrigger value="projects" className="rounded-xl data-[state=active]:bg-white data-[state=active]:shadow">Proyectos</TabsTrigger>
                             <TabsTrigger value="catalogs" className="rounded-xl data-[state=active]:bg-white data-[state=active]:shadow">Catálogos</TabsTrigger>
                             <TabsTrigger value="calls" className="rounded-xl data-[state=active]:bg-white data-[state=active]:shadow">Convocatorias</TabsTrigger>
                         </TabsList>

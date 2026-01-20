@@ -30,6 +30,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
+  DialogFooter,
 } from "../../components/ui/dialog";
 import {
   Select,
@@ -56,6 +57,8 @@ import {
   Paperclip,
   Pencil,
   Power,
+  ExternalLink,
+  ChevronDown
 } from "lucide-react";
 
 import { toast } from "sonner";
@@ -78,7 +81,6 @@ import {
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
 
-import { ChevronDown } from "lucide-react";
 
 /* ---------------- helpers ---------------- */
 function formatApiError(err, fallback = "Ocurrió un error") {
@@ -1576,83 +1578,99 @@ const MesaDePartesModule = () => {
     procRef.current?.focusSearch?.();
   };
 
+ // Estado para el modal de verificación
+  const [showVerifyModal, setShowVerifyModal] = useState(false);
+  const [verifyCode, setVerifyCode] = useState("");
+
   const handleQuickQR = () => {
-    const code = window.prompt("Ingrese el código de trámite para verificar:");
-    if (!code) return;
-    const url = MesaPartesPublic.verifyUrl(code);
-    window.open(url, "_blank", "noopener,noreferrer");
+    setVerifyCode(""); // Limpiamos el input
+    setShowVerifyModal(true); // Abrimos el modal profesional
   };
 
-  if (!user) return <div>Acceso no autorizado</div>;
+  const confirmVerification = () => {
+    if (!verifyCode.trim()) return;
+    const url = MesaPartesPublic.verifyUrl(verifyCode.trim());
+    window.open(url, "_blank", "noopener,noreferrer");
+    setShowVerifyModal(false);
+  };
+
+  if (!user) return (
+    <div className="flex items-center justify-center min-h-[400px] text-slate-500 font-medium">
+      Acceso no autorizado
+    </div>
+  );
 
   return (
-    <div className="p-6">
+    <div className="p-6 animate-in fade-in duration-500">
       <div className="rounded-2xl p-[1px] bg-gradient-to-b from-slate-500/30 to-slate-900/10">
         <div className="rounded-2xl bg-slate-200/70 backdrop-blur-md border border-white/30 shadow-[0_10px_35px_rgba(0,0,0,0.18)]">
           <div className="px-6 pt-5">
-            <h1 className="text-xl font-bold text-slate-900">Mesa de Partes Digital</h1>
+            <h1 className="text-xl font-bold text-slate-900 tracking-tight">Mesa de Partes Digital</h1>
             <p className="text-sm text-slate-700">Sistema de gestión de trámites documentarios</p>
             <div className="mt-3 h-px w-full bg-white/60" />
           </div>
 
           <div className="px-6 pb-6 pt-4">
             <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+              
               {/* ===== NAV TABS RESPONSIVE ===== */}
-<div className="pb-1">
-  {/* MÓVIL: tab actual + dropdown */}
-  <div className="sm:hidden">
-    <div className="rounded-xl bg-slate-100/80 border border-white/60 px-2 py-2">
-      <div className="flex items-center gap-2">
-        <TabsList className="flex-1 bg-transparent p-0 shadow-none">
-          <TabsTrigger
-            value={activeTab}
-            className="w-full justify-center rounded-lg text-slate-800 data-[state=active]:bg-white data-[state=active]:shadow-sm"
-          >
-            {tabs.find((t) => t.key === activeTab)?.label ?? "Dashboard"}
-          </TabsTrigger>
-        </TabsList>
+              <div className="pb-1">
+                {/* MÓVIL */}
+                <div className="sm:hidden">
+                  <div className="rounded-xl bg-slate-100/80 border border-white/60 px-2 py-2">
+                    <div className="flex items-center gap-2">
+                      <TabsList className="flex-1 bg-transparent p-0 shadow-none">
+                        <TabsTrigger
+                          value={activeTab}
+                          className="w-full justify-center rounded-lg text-slate-800 data-[state=active]:bg-white data-[state=active]:shadow-sm font-semibold"
+                        >
+                          {tabs.find((t) => t.key === activeTab)?.label ?? "Dashboard"}
+                        </TabsTrigger>
+                      </TabsList>
 
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="outline" size="icon" className="h-10 w-10 rounded-lg shrink-0">
-              <ChevronDown className="h-4 w-4" />
-            </Button>
-          </DropdownMenuTrigger>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="outline" size="icon" className="h-10 w-10 rounded-lg shrink-0 bg-white/50">
+                            <ChevronDown className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-56 rounded-xl shadow-xl">
+                          {tabs.map((t) => (
+                            <DropdownMenuItem 
+                              key={t.key} 
+                              onClick={() => setActiveTab(t.key)}
+                              className="font-medium py-2"
+                            >
+                              {t.label}
+                            </DropdownMenuItem>
+                          ))}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  </div>
+                </div>
 
-          <DropdownMenuContent align="end" className="w-56">
-            {tabs.map((t) => (
-              <DropdownMenuItem key={t.key} onClick={() => setActiveTab(t.key)}>
-                {t.label}
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
-    </div>
-  </div>
+                {/* DESKTOP */}
+                <div className="hidden sm:block">
+                  <div className="rounded-xl bg-slate-100/80 border border-white/60 px-2 py-2">
+                    <TabsList className="w-full bg-transparent p-0 flex flex-wrap gap-2">
+                      {tabs.map((t) => (
+                        <TabsTrigger
+                          key={t.key}
+                          value={t.key}
+                          className="rounded-lg text-slate-600 font-medium data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-sm transition-all"
+                        >
+                          {t.label}
+                        </TabsTrigger>
+                      ))}
+                    </TabsList>
+                  </div>
+                </div>
+              </div>
 
-  {/* TABLET/LAPTOP: tabs normales */}
-  <div className="hidden sm:block">
-    <div className="rounded-xl bg-slate-100/80 border border-white/60 px-2 py-2">
-      <TabsList className="w-full bg-transparent p-0 flex flex-wrap gap-2">
-        {tabs.map((t) => (
-          <TabsTrigger
-            key={t.key}
-            value={t.key}
-            className="rounded-lg text-slate-800 data-[state=active]:bg-white data-[state=active]:shadow-sm"
-          >
-            {t.label}
-          </TabsTrigger>
-        ))}
-      </TabsList>
-    </div>
-  </div>
-</div>
-{/* ===== /NAV TABS RESPONSIVE ===== */}
-
-
+              {/* ===== CONTENIDOS ===== */}
               {tabs.some((t) => t.key === "dashboard") && (
-                <TabsContent value="dashboard">
+                <TabsContent value="dashboard" className="mt-0 focus-visible:outline-none">
                   <MesaDePartesDashboardUI
                     onNew={handleQuickNew}
                     onSearch={handleQuickSearch}
@@ -1663,19 +1681,19 @@ const MesaDePartesModule = () => {
               )}
 
               {tabs.some((t) => t.key === "types") && (
-                <TabsContent value="types">
+                <TabsContent value="types" className="mt-0 focus-visible:outline-none">
                   <ProcedureTypesManagement />
                 </TabsContent>
               )}
 
               {tabs.some((t) => t.key === "procedures") && (
-                <TabsContent value="procedures">
+                <TabsContent value="procedures" className="mt-0 focus-visible:outline-none">
                   <ProceduresManagement ref={procRef} />
                 </TabsContent>
               )}
 
               {tabs.some((t) => t.key === "reports") && (
-                <TabsContent value="reports">
+                <TabsContent value="reports" className="mt-0 focus-visible:outline-none">
                   <MesaPartesReports />
                 </TabsContent>
               )}
@@ -1683,6 +1701,53 @@ const MesaDePartesModule = () => {
           </div>
         </div>
       </div>
+
+      {/* MODAL DE VERIFICACIÓN PROFESIONAL */}
+      <Dialog open={showVerifyModal} onOpenChange={setShowVerifyModal}>
+        <DialogContent className="sm:max-w-[425px] rounded-2xl border-none shadow-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-xl font-bold text-slate-900">
+              <QrCode className="h-5 w-5 text-blue-600" />
+              Verificar Trámite
+            </DialogTitle>
+            <DialogDescription className="text-slate-500">
+              Ingrese el código de trámite para validar la autenticidad y estado del documento.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="code" className="text-xs font-bold uppercase tracking-wider text-slate-500 ml-1">
+                Código de seguimiento
+              </Label>
+              <Input
+                id="code"
+                placeholder="Ej: EXP-2024-XXXX"
+                value={verifyCode}
+                onChange={(e) => setVerifyCode(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && confirmVerification()}
+                className="h-12 rounded-xl border-slate-200 focus:ring-blue-500 font-medium"
+                autoFocus
+              />
+            </div>
+          </div>
+          <DialogFooter className="flex-col sm:flex-row gap-2">
+            <Button 
+              variant="ghost" 
+              onClick={() => setShowVerifyModal(false)}
+              className="rounded-xl font-semibold text-slate-500"
+            >
+              Cancelar
+            </Button>
+            <Button 
+              onClick={confirmVerification}
+              className="rounded-xl bg-blue-600 hover:bg-blue-700 font-bold px-6 shadow-lg shadow-blue-200 transition-all active:scale-95"
+            >
+              <ExternalLink className="h-4 w-4 mr-2" />
+              Verificar Ahora
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

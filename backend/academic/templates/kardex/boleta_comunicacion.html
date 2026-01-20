@@ -1,0 +1,439 @@
+<!doctype html>
+<html lang="es">
+
+<head>
+    <meta charset="utf-8" />
+    <style>
+        @page {
+            size: A4;
+            margin: 10mm 10mm 10mm 10mm;
+        }
+
+        body {
+            font-family: Arial, Helvetica, sans-serif;
+            font-size: 10px;
+            color: #111;
+        }
+
+        .center {
+            text-align: center;
+        }
+
+        .bold {
+            font-weight: 700;
+        }
+
+        .small {
+            font-size: 9px;
+        }
+
+        .tiny {
+            font-size: 8px;
+        }
+
+        .mt8 {
+            margin-top: 8px;
+        }
+
+        .mt10 {
+            margin-top: 10px;
+        }
+
+        .mt14 {
+            margin-top: 14px;
+        }
+
+        .head {
+            display: grid;
+            grid-template-columns: 1fr 70px;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .logoBox {
+            width: 70px;
+            height: 70px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .logoBox img {
+            width: 70px;
+            height: 70px;
+            object-fit: contain;
+        }
+
+        .title1 {
+            font-size: 11px;
+            font-weight: 700;
+            text-align: center;
+        }
+
+        .title2 {
+            font-size: 12px;
+            font-weight: 700;
+            margin-top: 2px;
+            text-align: center;
+        }
+
+        .title3 {
+            font-size: 11px;
+            font-weight: 700;
+            margin-top: 2px;
+            text-align: center;
+        }
+
+        .bigTitle {
+            text-align: center;
+            font-size: 13px;
+            font-weight: 800;
+            margin-top: 10px;
+            letter-spacing: 0.3px;
+        }
+
+        .periodTitle {
+            text-align: center;
+            font-size: 11px;
+            font-weight: 800;
+            margin-top: 6px;
+        }
+
+        .line {
+            display: inline-block;
+            border-bottom: 1px solid #111;
+            min-width: 270px;
+            height: 12px;
+            vertical-align: bottom;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            table-layout: fixed;
+        }
+
+        th,
+        td {
+            border: 1px solid #111;
+            padding: 4px 5px;
+            vertical-align: middle;
+        }
+
+        thead th {
+            font-weight: 800;
+            text-transform: uppercase;
+            font-size: 9px;
+        }
+
+        col.col-sem {
+            width: 30px;
+        }
+
+        col.col-n {
+            width: 26px;
+        }
+
+        col.col-area {
+            width: auto;
+        }
+
+        col.col-h {
+            width: 38px;
+        }
+
+        col.col-c {
+            width: 40px;
+        }
+
+        col.col-ptje {
+            width: 44px;
+        }
+
+        col.col-fecha {
+            width: 58px;
+        }
+
+        col.col-obs {
+            width: 78px;
+        }
+
+        col.col-punt {
+            width: 44px;
+        }
+
+        .semCell {
+            text-align: center;
+            font-weight: 800;
+            letter-spacing: 2px;
+            writing-mode: vertical-rl;
+            transform: rotate(180deg);
+            padding: 6px 0;
+            font-size: 10px;
+        }
+
+        .numCell {
+            text-align: center;
+            font-weight: 700;
+        }
+
+        .hCell,
+        .cCell,
+        .ptjeCell {
+            text-align: center;
+        }
+
+        .hCell {
+            color: #c40000;
+            font-weight: 800;
+        }
+
+        .ptjeCell {
+            font-weight: 800;
+        }
+
+        .page-break {
+            break-before: page;
+            page-break-before: always;
+        }
+
+        .footerGrid {
+            margin-top: 10px;
+            display: grid;
+            gap: 10px;
+            font-size: 9px;
+        }
+
+        .signRow {
+            margin-top: 18px;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 60px;
+            align-items: end;
+        }
+
+        .sigLine {
+            border-top: 1px solid #111;
+            height: 14px;
+        }
+
+        .sigLabel {
+            text-align: center;
+            margin-top: 3px;
+            font-weight: 700;
+            font-size: 9px;
+        }
+
+        .vb {
+            margin-top: 18px;
+            font-weight: 700;
+        }
+
+        tr.sem-end td {
+            border-bottom-width: 2px;
+        }
+
+        /* ✅ FIRMA DIRECTOR */
+        .sigImgBox {
+            height: 55px;
+            display: flex;
+            align-items: flex-end;
+            justify-content: center;
+            margin-bottom: 4px;
+        }
+
+        .sigImg {
+            max-height: 55px;
+            max-width: 180px;
+            object-fit: contain;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="head">
+        <div>
+            <div class="title1">Instituto de Educación Superior Pedagógico Público</div>
+            <div class="title2">"Gustavo Allende Llavería"</div>
+            <div class="title3">Tarma</div>
+
+            <div class="bigTitle">FICHA DE RENDIMIENTO ACADÉMICO</div>
+
+            {% if period_label %}
+            <div class="periodTitle">PERIODO: {{ period_label }}</div>
+            {% endif %}
+
+            <div class="mt10 small" style="text-align:left;">
+                A DON (ÑA) <span class="line" style="min-width: 200px;">{{ student_name }}</span>
+                QUIEN HA CURSADO ESTUDIOS SUPERIORES
+            </div>
+
+            <div class="mt8 small" style="text-align:left;">
+                EN ESTA CASA DE FORMACIÓN MAGISTERIAL EN EL PROGRAMA DE ESTUDIOS DE: <span class="bold">{{ career_name
+                    }}</span>
+            </div>
+
+            <div class="mt8 small" style="text-align:left;">
+                (RVM N° 163-2019-MINEDU) COD. DE MATRICULA: <span class="line" style="min-width:140px;">{{ student_code
+                    }}</span> HABIENDO OBTENIDO LOS SIGUIENTES RESULTADOS.
+            </div>
+        </div>
+
+        <div class="logoBox">
+            {% if logo_url %}
+            <img src="{{ logo_url }}" alt="logo" />
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- PAG 1 -->
+    <div class="mt14">
+        <table>
+            <colgroup>
+                <col class="col-sem">
+                <col class="col-n">
+                <col class="col-area">
+                <col class="col-h">
+                <col class="col-c">
+                <col class="col-ptje">
+                <col class="col-fecha">
+                <col class="col-obs">
+                <col class="col-punt">
+            </colgroup>
+            <thead>
+                <tr>
+                    <th>SEM</th>
+                    <th>N°</th>
+                    <th>AREAS / ASIGNATURAS</th>
+                    <th>HORA</th>
+                    <th>CRED.</th>
+                    <th>PTJE.</th>
+                    <th>FECHA</th>
+                    <th>OBSERVACIÓN</th>
+                    <th>PUNT.</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for sem in page1 %}
+                {% for r in sem.rows %}
+                <tr class="{% if forloop.last %}sem-end{% endif %}">
+                    {% if forloop.first %}
+                    <td class="semCell" rowspan="{{ sem.rowspan }}">{{ sem.label }}</td>
+                    {% endif %}
+                    <td class="numCell">{{ r.n }}</td>
+                    <td>{{ r.course_name }}</td>
+                    <td class="hCell">{{ r.hours }}</td>
+                    <td class="cCell">{{ r.credits }}</td>
+                    <td class="ptjeCell">{{ r.grade }}</td>
+                    <td></td>
+                    <td></td>
+                    <td class="ptjeCell">{% if forloop.last %}{{ sem.total_credits }}{% endif %}</td>
+                </tr>
+                {% endfor %}
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    {% if page2 and page2|length > 0 %}
+    <div class="page-break"></div>
+
+    <!-- PAG 2 -->
+    <div class="mt14">
+        <table>
+            <colgroup>
+                <col class="col-sem">
+                <col class="col-n">
+                <col class="col-area">
+                <col class="col-h">
+                <col class="col-c">
+                <col class="col-ptje">
+                <col class="col-fecha">
+                <col class="col-obs">
+                <col class="col-punt">
+            </colgroup>
+            <thead>
+                <tr>
+                    <th>SEM</th>
+                    <th>N°</th>
+                    <th>AREAS / ASIGNATURAS</th>
+                    <th>HORA</th>
+                    <th>CRED.</th>
+                    <th>PTJE.</th>
+                    <th>FECHA</th>
+                    <th>OBSERVACIÓN</th>
+                    <th>PUNT.</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for sem in page2 %}
+                {% for r in sem.rows %}
+                <tr class="{% if forloop.last %}sem-end{% endif %}">
+                    {% if forloop.first %}
+                    <td class="semCell" rowspan="{{ sem.rowspan }}">{{ sem.label }}</td>
+                    {% endif %}
+                    <td class="numCell">{{ r.n }}</td>
+                    <td>{{ r.course_name }}</td>
+                    <td class="hCell">{{ r.hours }}</td>
+                    <td class="cCell">{{ r.credits }}</td>
+                    <td class="ptjeCell">{{ r.grade }}</td>
+                    <td></td>
+                    <td></td>
+                    <td class="ptjeCell">{% if forloop.last %}{{ sem.total_credits }}{% endif %}</td>
+                </tr>
+                {% endfor %}
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+
+    <!-- FOOTER -->
+    <div class="footerGrid">
+        <div class="tiny bold">
+            CONFORME CONSTA EN LAS ACTAS DE EVALUACIÓN A LAS QUE REMITO EN CASO NECESARIO
+        </div>
+
+        <div class="small">
+            Pomachaca, ……….. de ………………………. del ………….
+        </div>
+
+        <div class="small">
+            <span class="bold">OBSERVACIONES:</span>
+            <span style="display:inline-block; border-bottom:1px solid #111; width: 76%; height: 12px;"></span>
+        </div>
+
+        <div class="signRow">
+            <div>
+                <div class="sigLine"></div>
+                <div class="sigLabel">RESPONSABLE DEL CALIGRAFIADO</div>
+            </div>
+            <div></div>
+        </div>
+
+        <div class="vb">V°B°</div>
+
+        <div class="signRow">
+            <div>
+                <div class="sigLine"></div>
+                <div class="sigLabel">SECRETARIO ACADÉMICO</div>
+            </div>
+
+            <!-- ✅ DIRECTOR CON FIRMA -->
+            <div>
+                {% if signature_url %}
+                <div class="sigImgBox">
+                    <img class="sigImg" src="{{ signature_url }}" alt="firma director" />
+                </div>
+                {% else %}
+                <div style="height:55px;"></div>
+                {% endif %}
+
+                <div class="sigLine"></div>
+                <div class="sigLabel">DIRECTOR(A) GENERAL</div>
+            </div>
+        </div>
+    </div>
+</body>
+
+</html>

@@ -243,15 +243,14 @@ export const PublicIntake = {
    Reportes (SLA/volúmenes)
 ------------------------------------------------------- */
 export const ProcedureReports = {
-    // ✅ backend ahora acepta con o sin slash
     summary: async (params = {}) =>
         asJson(api, "GET", `/procedures/reports/summary`, null, { params }),
 
     exportSLA: async (params = {}) =>
-        asBlobOrJson(api, "GET", `/procedures/reports/sla.xlsx`, null, { params }),
+        api.get(`/procedures/reports/sla.xlsx`, { params, responseType: "blob" }),
 
     exportVolume: async (params = {}) =>
-        asBlobOrJson(api, "GET", `/procedures/reports/volume.xlsx`, null, { params }),
+        api.get(`/procedures/reports/volume.xlsx`, { params, responseType: "blob" }),
 };
 
 /* -------------------------------------------------------

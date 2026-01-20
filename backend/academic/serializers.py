@@ -125,14 +125,20 @@ class PlanCourseOutSerializer(serializers.ModelSerializer):
     code = serializers.CharField(source="course.code", read_only=True)
     name = serializers.CharField(source="course.name", read_only=True)
     credits = serializers.IntegerField(source="course.credits", read_only=True)
+
     prerequisites = serializers.SerializerMethodField()
 
     class Meta:
         model = PlanCourse
-        fields = ["id", "code", "name", "credits", "weekly_hours", "semester", "type", "prerequisites"]
+        fields = [
+            "id",
+            "code", "name", "credits",
+            "semester", "weekly_hours", "type",
+            "prerequisites",
+        ]
 
     def get_prerequisites(self, obj):
-        ids = obj.prereqs.values_list("prerequisite_id", flat=True)
+        ids = CoursePrereq.objects.filter(plan_course=obj).values_list("prerequisite_id", flat=True)
         return [{"id": i} for i in ids]
 
 
