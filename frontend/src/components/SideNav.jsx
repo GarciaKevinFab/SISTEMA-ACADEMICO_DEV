@@ -29,8 +29,10 @@ const SideNav = () => {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isMobileOpen, setIsMobileOpen] = useState(false);
 
+  // Cerrar menú móvil al cambiar de ruta
   useEffect(() => setIsMobileOpen(false), [location.pathname]);
 
+  // Bloquear scroll del body cuando el menú móvil está abierto
   useEffect(() => {
     if (isMobileOpen) {
       document.body.style.overflow = "hidden";
@@ -52,7 +54,6 @@ const SideNav = () => {
       ? location.pathname === "/dashboard"
       : location.pathname.startsWith(path);
 
-  // ✅ Permisos efectivos (incluye aliases)
   const grantedPerms = useMemo(() => {
     const set = new Set((permissions || []).filter(Boolean));
     for (const p of set) {
@@ -68,7 +69,6 @@ const SideNav = () => {
     return req.some((p) => grantedPerms.has(p));
   };
 
-  // ✅ Estudiante: visible si es STUDENT, ADMIN_SYSTEM o tiene permisos student.*
   const canSeeStudentModule = useMemo(() => {
     if (!user) return false;
 
@@ -78,21 +78,18 @@ const SideNav = () => {
       roles.some((r) => String(r).toUpperCase().includes("ADMIN_SYSTEM"));
 
     const permOk = canAny(
-      // self
       PERMS["student.self.dashboard.view"],
       PERMS["student.self.profile.view"],
       PERMS["student.self.profile.edit"],
       PERMS["student.self.kardex.view"],
       PERMS["student.self.enrollment.view"],
-
-      // manage
       PERMS["student.manage.list"],
       PERMS["student.manage.view"],
       PERMS["student.manage.edit"]
     );
 
     return roleOk || permOk;
-  }, [user, roles, grantedPerms]); // ok
+  }, [user, roles, grantedPerms]);
 
   const menuGroups = useMemo(
     () => [
@@ -108,7 +105,6 @@ const SideNav = () => {
           },
         ],
       },
-
       {
         group: "Gestión y Control",
         items: [
@@ -138,7 +134,6 @@ const SideNav = () => {
           },
         ],
       },
-
       {
         group: "Académico",
         items: [
@@ -157,7 +152,6 @@ const SideNav = () => {
               PERMS["academic.attendance.view"]
             ),
           },
-
           {
             id: "student",
             title: "Estudiante",
@@ -165,7 +159,6 @@ const SideNav = () => {
             icon: GraduationCap,
             show: canSeeStudentModule,
           },
-
           {
             id: "admission",
             title: "Admisión",
@@ -195,7 +188,6 @@ const SideNav = () => {
           },
         ],
       },
-
       {
         group: "Operaciones",
         items: [
@@ -249,7 +241,23 @@ const SideNav = () => {
 
   return (
     <>
-      {/* HEADER MÓVIL */}
+      {/* ESTILOS FORZADOS PARA OCULTAR SCROLLBAR 
+        Se usa !important para sobrescribir cualquier estilo del navegador o tailwind base.
+      */}
+      <style>{`
+        .no-scrollbar::-webkit-scrollbar {
+          display: none !important;
+          width: 0 !important;
+          height: 0 !important;
+          background: transparent !important;
+        }
+        .no-scrollbar {
+          -ms-overflow-style: none !important;  /* IE and Edge */
+          scrollbar-width: none !important;  /* Firefox */
+        }
+      `}</style>
+
+      {/* HEADER MÓVIL (Visible solo en XL o menor) */}
       <div className="xl:hidden bg-[#0f172a] text-white p-4 flex items-center justify-between border-b border-slate-800 sticky top-0 z-[60]">
         <div className="flex items-center gap-2">
           <img
@@ -261,34 +269,40 @@ const SideNav = () => {
         </div>
         <button
           onClick={() => setIsMobileOpen(!isMobileOpen)}
-          className="p-2 bg-indigo-600 rounded-lg shadow-lg shadow-indigo-500/20"
+          className="p-2 bg-indigo-600 rounded-lg shadow-lg shadow-indigo-500/20 active:scale-95 transition-transform"
           aria-label={isMobileOpen ? "Cerrar menú" : "Abrir menú"}
         >
           {isMobileOpen ? <X size={24} /> : <Menu size={24} />}
         </button>
       </div>
 
-      {/* OVERLAY MÓVIL */}
-      {isMobileOpen && (
-        <div
-          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[70] xl:hidden transition-opacity"
-          onClick={() => setIsMobileOpen(false)}
-        />
-      )}
+      {/* OVERLAY MÓVIL (Fondo oscuro al abrir menú) */}
+      <div
+        className={`fixed inset-0 bg-black/60 backdrop-blur-sm z-[70] xl:hidden transition-opacity duration-300 ${
+          isMobileOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
+        }`}
+        onClick={() => setIsMobileOpen(false)}
+      />
 
-      {/* SIDEBAR */}
-     <aside
-  className={`
-    fixed inset-y-0 left-0 z-[80]
-    xl:sticky xl:top-0 xl:h-[100dvh] xl:z-0 xl:self-start
-    flex flex-col bg-[#0f172a] text-slate-300 border-r border-slate-800 shadow-2xl
-    transition-[width,transform] duration-300 ease-in-out
-    ${isMobileOpen ? "translate-x-0" : "-translate-x-full xl:translate-x-0"}
-    ${isCollapsed ? "xl:w-20" : "xl:w-72 w-[280px]"}
-  `}
->
-
-        {/* Toggle Button (Desktop) */}
+      {/* SIDEBAR PRINCIPAL */}
+      <aside
+        className={`
+          fixed inset-y-0 left-0 z-[80]
+          flex flex-col bg-[#0f172a] text-slate-300 border-r border-slate-800 shadow-2xl
+          transition-[width,transform] duration-300 ease-in-out
+          
+          /* Lógica Responsiva */
+          /* Móvil/Tablet: Slide-in desde la izquierda */
+          ${isMobileOpen ? "translate-x-0" : "-translate-x-full"}
+          
+          /* Desktop (XL+): Siempre visible y estático */
+          xl:translate-x-0 xl:sticky xl:top-0 xl:h-screen xl:self-start
+          
+          /* Ancho dinámico */
+          ${isCollapsed ? "xl:w-20" : "xl:w-72 w-[280px]"}
+        `}
+      >
+        {/* Toggle Button (Solo Desktop) */}
         <div className="hidden xl:block absolute right-0 top-1/2 -translate-y-1/2 translate-x-1/2 z-[90]">
           <button
             type="button"
@@ -302,21 +316,14 @@ const SideNav = () => {
           >
             <span className="absolute -left-2 top-1/2 -translate-y-1/2 h-7 w-1.5 rounded-full bg-white/25" />
             {isCollapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
-            <span
-              className="pointer-events-none absolute right-full mr-3 px-2 py-1 rounded-md
-                         bg-black/70 text-white text-[11px] font-semibold whitespace-nowrap
-                         opacity-0 translate-x-1 group-hover:opacity-100 group-hover:translate-x-0
-                         transition-all"
-            >
-              {isCollapsed ? "Abrir menú" : "Colapsar menú"}
-            </span>
           </button>
         </div>
 
-        {/* Brand Header */}
+        {/* LOGO & BRANDING */}
         <div
-          className={`h-24 flex items-center mb-4 ${isCollapsed && !isMobileOpen ? "px-3 justify-center" : "px-6"
-            }`}
+          className={`h-24 flex items-center mb-4 flex-shrink-0 ${
+            isCollapsed && !isMobileOpen ? "px-3 justify-center" : "px-6"
+          }`}
         >
           <div className="flex items-center gap-3 overflow-hidden">
             <div className="h-11 w-11 min-w-[44px] rounded-xl bg-white flex items-center justify-center p-1.5 shadow-xl shadow-indigo-500/10">
@@ -336,12 +343,13 @@ const SideNav = () => {
           </div>
         </div>
 
-        {/* User Card */}
+        {/* TARJETA DE USUARIO */}
         {user && (
-          <div className="px-4 mb-6">
+          <div className="px-4 mb-6 flex-shrink-0">
             <div
-              className={`flex items-center gap-3 p-3 rounded-2xl bg-slate-800/40 border border-slate-700/50 ${isCollapsed && !isMobileOpen ? "justify-center px-2" : ""
-                }`}
+              className={`flex items-center gap-3 p-3 rounded-2xl bg-slate-800/40 border border-slate-700/50 ${
+                isCollapsed && !isMobileOpen ? "justify-center px-2" : ""
+              }`}
             >
               <div className="h-10 w-10 min-w-[40px] rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white">
                 <UserCircle size={24} />
@@ -361,8 +369,12 @@ const SideNav = () => {
           </div>
         )}
 
-        {/* Navigation Groups */}
-        <nav className="flex-1 px-3 space-y-6 overflow-y-auto overflow-x-hidden custom-scrollbar pb-10">
+        {/* MENÚ DE NAVEGACIÓN (SCROLLBAR OCULTO) 
+           - flex-1: Ocupa el espacio restante
+           - min-h-0: Permite que el flex container haga scroll correctamente en firefox/chrome
+           - no-scrollbar: Clase personalizada inyectada arriba
+        */}
+        <nav className="flex-1 min-h-0 px-3 space-y-6 overflow-y-auto overflow-x-hidden pb-10 no-scrollbar">
           {menuGroups.map((group, idx) => {
             const visibleItems = group.items.filter((i) => i.show);
             if (visibleItems.length === 0) return null;
@@ -384,11 +396,13 @@ const SideNav = () => {
                       <li key={item.id}>
                         <Link
                           to={item.path}
-                          className={`group relative flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 ${isCollapsed && !isMobileOpen ? "justify-center px-2" : ""
-                            } ${active
+                          className={`group relative flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 ${
+                            isCollapsed && !isMobileOpen ? "justify-center px-2" : ""
+                          } ${
+                            active
                               ? "bg-indigo-600 text-white shadow-lg shadow-indigo-600/30"
                               : "text-slate-400 hover:bg-slate-800/60 hover:text-slate-100"
-                            }`}
+                          }`}
                           title={isCollapsed && !isMobileOpen ? item.title : undefined}
                           aria-label={item.title}
                         >
@@ -412,12 +426,13 @@ const SideNav = () => {
           })}
         </nav>
 
-        {/* Bottom Actions */}
-        <div className="p-4 bg-slate-900/40 border-t border-slate-800/50">
+        {/* FOOTER (Cerrar Sesión) */}
+        <div className="p-4 bg-slate-900/40 border-t border-slate-800/50 flex-shrink-0">
           <button
             onClick={logout}
-            className={`flex items-center gap-3 w-full p-3 rounded-xl text-slate-400 hover:bg-red-500/10 hover:text-red-400 transition-all font-bold ${isCollapsed && !isMobileOpen ? "justify-center" : ""
-              }`}
+            className={`flex items-center gap-3 w-full p-3 rounded-xl text-slate-400 hover:bg-red-500/10 hover:text-red-400 transition-all font-bold ${
+              isCollapsed && !isMobileOpen ? "justify-center" : ""
+            }`}
             aria-label="Cerrar sesión"
           >
             <LogOut size={18} />

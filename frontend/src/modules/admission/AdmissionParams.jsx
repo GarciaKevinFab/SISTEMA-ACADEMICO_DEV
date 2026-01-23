@@ -52,46 +52,82 @@ export default function AdmissionParamsModule() {
     const reqDocs = Array.isArray(params?.required_documents) ? params.required_documents : [];
 
     return (
-        <Card>
-            <CardHeader>
-                <CardTitle>Parámetros de Admisión</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-                <div className="grid md:grid-cols-2 gap-3">
-                    <div>
-                        <Label>Edad mínima</Label>
-                        <Input
-                            type="number"
-                            value={params?.min_age ?? DEFAULT_PARAMS.min_age}
-                            onChange={(e) => setParams((p) => ({ ...p, min_age: parseInt(e.target.value) || 0 }))}
-                        />
-                    </div>
-                    <div>
-                        <Label>Edad máxima</Label>
-                        <Input
-                            type="number"
-                            value={params?.max_age ?? DEFAULT_PARAMS.max_age}
-                            onChange={(e) => setParams((p) => ({ ...p, max_age: parseInt(e.target.value) || 0 }))}
-                        />
-                    </div>
+    <Card className="border-gray-200 shadow-sm rounded-2xl overflow-hidden bg-white ring-1 ring-gray-100 animate-in fade-in duration-500">
+        <CardHeader className="border-b border-gray-50 pb-4">
+            <CardTitle className="text-xl font-bold text-gray-900 tracking-tight">
+                Parámetros de Admisión
+            </CardTitle>
+        </CardHeader>
+        
+        <CardContent className="p-6 sm:p-8 space-y-8">
+            {/* --- SECCIÓN: RANGOS DE EDAD --- */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                    <Label className="text-xs font-bold text-gray-500 uppercase tracking-widest">
+                        Edad Mínima
+                    </Label>
+                    <Input
+                        type="number"
+                        className="h-11 rounded-xl border-gray-200 focus:ring-1 focus:ring-gray-200 font-medium"
+                        value={params?.min_age ?? DEFAULT_PARAMS.min_age}
+                        onChange={(e) => setParams((p) => ({ ...p, min_age: parseInt(e.target.value) || 0 }))}
+                    />
                 </div>
+                <div className="space-y-2">
+                    <Label className="text-xs font-bold text-gray-500 uppercase tracking-widest">
+                        Edad Máxima
+                    </Label>
+                    <Input
+                        type="number"
+                        className="h-11 rounded-xl border-gray-200 focus:ring-1 focus:ring-gray-200 font-medium"
+                        value={params?.max_age ?? DEFAULT_PARAMS.max_age}
+                        onChange={(e) => setParams((p) => ({ ...p, max_age: parseInt(e.target.value) || 0 }))}
+                    />
+                </div>
+            </div>
 
-                <div>
-                    <Label>Documentos requeridos (plantilla)</Label>
-                    <div className="grid md:grid-cols-2 gap-2 mt-2">
-                        {ALL_DOCS.map((d) => (
-                            <label key={d} className="border rounded p-2 flex items-center gap-2 text-sm">
-                                <input type="checkbox" checked={reqDocs.includes(d)} onChange={() => toggleDoc(d)} />
-                                {d}
+            {/* --- SECCIÓN: PLANTILLA DE DOCUMENTOS --- */}
+            <div className="space-y-4">
+                <Label className="text-xs font-bold text-gray-500 uppercase tracking-widest block">
+                    Documentos Requeridos (Plantilla General)
+                </Label>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-2">
+                    {ALL_DOCS.map((d) => {
+                        const isChecked = reqDocs.includes(d);
+                        return (
+                            <label 
+                                key={d} 
+                                className={`flex items-center gap-3 p-4 rounded-xl border-2 transition-all cursor-pointer group ${
+                                    isChecked 
+                                    ? "border-gray-900 bg-white shadow-sm" 
+                                    : "border-gray-100 bg-gray-50/30 hover:border-gray-200"
+                                }`}
+                            >
+                                <input 
+                                    type="checkbox" 
+                                    className="w-4 h-4 rounded border-gray-300 text-gray-900 focus:ring-gray-900 cursor-pointer"
+                                    checked={isChecked} 
+                                    onChange={() => toggleDoc(d)} 
+                                />
+                                <span className={`text-sm font-medium transition-colors ${isChecked ? "text-gray-900" : "text-gray-600"}`}>
+                                    {d}
+                                </span>
                             </label>
-                        ))}
-                    </div>
+                        );
+                    })}
                 </div>
+            </div>
 
-                <div className="flex justify-end">
-                    <Button onClick={save}>Guardar</Button>
-                </div>
-            </CardContent>
-        </Card>
-    );
-}
+            {/* --- ACCIONES --- */}
+            <div className="flex justify-end pt-6 border-t border-gray-50">
+                <Button 
+                    onClick={save}
+                    className="h-12 px-10 rounded-xl bg-gray-900 hover:bg-black text-white font-bold shadow-sm transition-transform active:scale-95"
+                >
+                    Guardar Configuración
+                </Button>
+            </div>
+        </CardContent>
+    </Card>
+);
+ }
