@@ -1,8 +1,7 @@
 // src/modules/admin/ConfigCatalogsModule.jsx
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "../../utils/safeToast";
 import { useAuth } from "../../context/AuthContext";
-import { Courses as AcademicCourses } from "../../services/academic.service";
 
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
@@ -121,14 +120,12 @@ function filenameFromContentDisposition(cd, fallback) {
 function normalizeUbigeoList(list) {
     const arr = list?.items ?? list ?? [];
     if (!Array.isArray(arr)) return [];
-    return arr
-        .map((x) => {
-            if (typeof x === "string") return { code: x, name: x };
-            const code = String(x?.code ?? x?.id ?? x?.value ?? x?.name ?? "");
-            const name = String(x?.name ?? x?.label ?? x?.value ?? x?.code ?? "");
-            return { code, name };
-        })
-        .filter((x) => x.code);
+    return arr.map((x) => {
+        if (typeof x === "string") return { code: x, name: x };
+        const code = String(x?.code ?? x?.id ?? x?.value ?? x?.name ?? "");
+        const name = String(x?.name ?? x?.label ?? x?.value ?? x?.code ?? "");
+        return { code, name };
+    }).filter((x) => x.code);
 }
 
 const Field = ({ label, children }) => (
@@ -189,9 +186,7 @@ const PeriodsSection = () => {
         }
     }, []);
 
-    useEffect(() => {
-        load();
-    }, [load]);
+    useEffect(() => { load(); }, [load]);
 
     const save = async () => {
         try {
@@ -629,31 +624,399 @@ const CampusesSection = () => {
             }
             desc="Administre las sedes (campus) y sus respectivas aulas físicas."
         >
-            {/* (tu CampusesSection original sigue igual; no lo recorto para no cambiarte nada) */}
-            {/* ... */}
-            {/* IMPORTANTE: aquí no te toco nada por brevedad visual, pero en tu archivo real, deja tu código tal cual */}
-            <div className="text-sm text-slate-500">
-                (Deja tu CampusesSection igual como lo tienes; aquí no se alteró la lógica)
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                {/* SEDES */}
+                <Card className="lg:col-span-1 rounded-2xl border-slate-200 shadow-sm flex flex-col h-full bg-white">
+                    <CardHeader className="border-b border-slate-100 bg-slate-50/50 pb-4">
+                        <div className="flex flex-row items-center justify-between">
+                            <div>
+                                <CardTitle className="text-lg text-slate-800">Sedes</CardTitle>
+                                <CardDescription className="text-xs">Campus disponibles</CardDescription>
+                            </div>
+
+                            <Dialog
+                                open={openCampus}
+                                onOpenChange={(v) => {
+                                    setOpenCampus(v);
+                                    if (!v) resetCampusForm();
+                                }}
+                            >
+                                <DialogTrigger asChild>
+                                    <Button
+                                        size="sm"
+                                        variant="outline"
+                                        className="h-8 rounded-lg border-slate-300 text-slate-600 hover:text-blue-600 hover:border-blue-200 hover:bg-blue-50"
+                                        onClick={() => setEditingCampus(null)}
+                                    >
+                                        <Plus className="h-3.5 w-3.5 mr-1" /> Nueva
+                                    </Button>
+                                </DialogTrigger>
+
+                                <DialogContent className="rounded-2xl sm:max-w-md">
+                                    <DialogHeader>
+                                        <DialogTitle>{editingCampus ? "Editar sede" : "Registrar nueva sede"}</DialogTitle>
+                                        <DialogDescription>Ingrese los datos de la ubicación.</DialogDescription>
+                                    </DialogHeader>
+
+                                    <div className="space-y-4 py-2">
+                                        <Field label="Código *">
+                                            <Input
+                                                className="rounded-xl bg-slate-50 focus:bg-white transition-colors"
+                                                placeholder="Ej. LIM-01"
+                                                value={campusForm.code}
+                                                onChange={(e) => setCampusForm({ ...campusForm, code: e.target.value })}
+                                            />
+                                        </Field>
+
+                                        <Field label="Nombre *">
+                                            <Input
+                                                className="rounded-xl bg-slate-50 focus:bg-white transition-colors"
+                                                placeholder="Ej. Campus Central"
+                                                value={campusForm.name}
+                                                onChange={(e) => setCampusForm({ ...campusForm, name: e.target.value })}
+                                            />
+                                        </Field>
+
+                                        <Field label="Dirección">
+                                            <Input
+                                                className="rounded-xl bg-slate-50 focus:bg-white transition-colors"
+                                                placeholder="Av. Principal 123..."
+                                                value={campusForm.address}
+                                                onChange={(e) => setCampusForm({ ...campusForm, address: e.target.value })}
+                                            />
+                                        </Field>
+
+                                        <div className="flex justify-end gap-2 pt-2">
+                                            <Button variant="outline" className="rounded-xl" onClick={() => setOpenCampus(false)}>
+                                                Cancelar
+                                            </Button>
+                                            <Button onClick={saveCampus} className="rounded-xl bg-blue-600 hover:bg-blue-700 shadow-md">
+                                                {editingCampus ? "Guardar cambios" : "Guardar Sede"}
+                                            </Button>
+                                        </div>
+                                    </div>
+                                </DialogContent>
+                            </Dialog>
+                        </div>
+                    </CardHeader>
+
+                    <CardContent className="flex-1 p-3 overflow-y-auto max-h-[500px] space-y-2 bg-slate-50/30">
+                        {loading ? (
+                            <div className="flex flex-col items-center justify-center py-8 text-slate-400">
+                                <div className="animate-spin rounded-full h-6 w-6 border-2 border-slate-200 border-t-blue-500 mb-2" />
+                                <span className="text-xs">Cargando sedes...</span>
+                            </div>
+                        ) : (
+                            campuses.map((c) => {
+                                const isSelected = String(c.id) === String(selCampus);
+
+                                // ✅ FIX: ya NO usamos <Button> contenedor para evitar <button> dentro de <button>
+                                return (
+                                    <div
+                                        key={c.id}
+                                        role="button"
+                                        tabIndex={0}
+                                        onClick={() => setSelCampus(String(c.id))}
+                                        onKeyDown={(e) => {
+                                            if (e.key === "Enter" || e.key === " ") setSelCampus(String(c.id));
+                                        }}
+                                        className={`group w-full rounded-xl px-4 py-4 text-left transition-all border cursor-pointer select-none flex items-center gap-3 ${isSelected
+                                            ? "bg-blue-50 border-blue-200 text-blue-700 shadow-sm"
+                                            : "bg-white border-transparent hover:bg-slate-100 text-slate-600 hover:border-slate-200"
+                                            }`}
+                                    >
+                                        <div className={`p-2 rounded-lg ${isSelected ? "bg-blue-100 text-blue-600" : "bg-slate-100 text-slate-400"}`}>
+                                            <Landmark className="h-5 w-5" />
+                                        </div>
+
+                                        <div className="flex flex-col overflow-hidden flex-1">
+                                            <span className="font-semibold truncate">{c.name}</span>
+                                            <span className="text-[10px] opacity-70 truncate">{c.address || "Sin dirección"}</span>
+                                        </div>
+
+                                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                            <Button
+                                                size="icon"
+                                                variant="ghost"
+                                                className="h-8 w-8 rounded-full text-slate-400 hover:text-blue-600 hover:bg-blue-50"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    onEditCampus(c);
+                                                }}
+                                            >
+                                                <Settings className="h-4 w-4" />
+                                            </Button>
+
+                                            <AlertDialog>
+                                                <AlertDialogTrigger asChild>
+                                                    <Button
+                                                        size="icon"
+                                                        variant="ghost"
+                                                        className="h-8 w-8 rounded-full text-slate-400 hover:text-red-600 hover:bg-red-50"
+                                                        onClick={(e) => e.stopPropagation()}
+                                                    >
+                                                        <Trash2 className="h-4 w-4" />
+                                                    </Button>
+                                                </AlertDialogTrigger>
+
+                                                <AlertDialogContent className="max-w-[92vw] sm:max-w-md rounded-2xl">
+                                                    <AlertDialogHeader>
+                                                        <AlertDialogTitle className="flex items-center gap-2 text-red-600">
+                                                            <AlertCircle className="h-5 w-5" />
+                                                            ¿Eliminar sede?
+                                                        </AlertDialogTitle>
+                                                        <AlertDialogDescription className="text-slate-600">
+                                                            Se eliminará permanentemente la sede{" "}
+                                                            <span className="font-bold text-slate-900">{c.name}</span>.
+                                                        </AlertDialogDescription>
+                                                    </AlertDialogHeader>
+
+                                                    <AlertDialogFooter className="flex-col sm:flex-row gap-2 mt-4">
+                                                        <AlertDialogCancel className="w-full sm:w-auto rounded-xl border-slate-200">
+                                                            Cancelar
+                                                        </AlertDialogCancel>
+                                                        <AlertDialogAction
+                                                            className="w-full sm:w-auto bg-red-600 hover:bg-red-700 rounded-xl"
+                                                            onClick={() => removeCampus(c)}
+                                                        >
+                                                            Sí, eliminar
+                                                        </AlertDialogAction>
+                                                    </AlertDialogFooter>
+                                                </AlertDialogContent>
+                                            </AlertDialog>
+                                        </div>
+
+                                        {isSelected && <ChevronRight className="ml-1 h-4 w-4 opacity-50" />}
+                                    </div>
+                                );
+                            })
+                        )}
+
+                        {campuses.length === 0 && !loading && (
+                            <div className="text-center py-10 text-slate-400 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                                <Building2 className="h-8 w-8 mx-auto mb-2 opacity-20" />
+                                <p className="text-sm font-medium">No hay sedes</p>
+                                <p className="text-xs">Registre una para comenzar</p>
+                            </div>
+                        )}
+                    </CardContent>
+                </Card>
+
+                {/* AULAS */}
+                <Card className="lg:col-span-2 rounded-2xl border-slate-200 shadow-sm bg-white overflow-hidden flex flex-col h-full">
+                    <CardHeader className="border-b border-slate-100 py-5 bg-white">
+                        <div className="flex items-center justify-between">
+                            <div className="flex flex-col">
+                                <CardTitle className="text-xl text-slate-800 flex items-center gap-2">
+                                    <span className="bg-slate-100 p-1.5 rounded-md">
+                                        <Building2 className="h-4 w-4 text-slate-500" />
+                                    </span>
+                                    Aulas y Espacios
+                                </CardTitle>
+                                <CardDescription className="flex items-center gap-1 mt-1">
+                                    {selCampus ? (
+                                        <>
+                                            <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                                            <span className="font-medium text-green-700">
+                                                {campuses.find((x) => String(x.id) === String(selCampus))?.name}
+                                            </span>
+                                        </>
+                                    ) : (
+                                        <span className="text-orange-500 font-medium flex items-center gap-1">
+                                            <AlertCircle className="h-3 w-3" /> Seleccione una sede primero
+                                        </span>
+                                    )}
+                                </CardDescription>
+                            </div>
+
+                            <Dialog
+                                open={openClass}
+                                onOpenChange={(v) => {
+                                    setOpenClass(v);
+                                    if (!v) resetClassForm();
+                                }}
+                            >
+                                <DialogTrigger asChild>
+                                    <Button disabled={!selCampus} className="rounded-xl bg-blue-600 hover:bg-blue-700 shadow-md transition-all disabled:opacity-50">
+                                        <Plus className="h-4 w-4 mr-2" /> Nueva Aula
+                                    </Button>
+                                </DialogTrigger>
+
+                                <DialogContent className="rounded-2xl sm:max-w-md">
+                                    <DialogHeader>
+                                        <DialogTitle>{editingClass ? "Editar Aula" : "Nueva Aula"}</DialogTitle>
+                                        <DialogDescription>
+                                            {editingClass ? "Actualice los datos del aula." : "Registre un nuevo espacio físico."}
+                                        </DialogDescription>
+                                    </DialogHeader>
+
+                                    <div className="space-y-4 py-2">
+                                        <Field label="Código Interno *">
+                                            <Input
+                                                className="rounded-xl"
+                                                placeholder="Ej. A-101"
+                                                value={classForm.code}
+                                                onChange={(e) => setClassForm({ ...classForm, code: e.target.value })}
+                                            />
+                                        </Field>
+
+                                        <Field label="Nombre Visible *">
+                                            <Input
+                                                className="rounded-xl"
+                                                placeholder="Ej. Laboratorio de Cómputo 1"
+                                                value={classForm.name}
+                                                onChange={(e) => setClassForm({ ...classForm, name: e.target.value })}
+                                            />
+                                        </Field>
+
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <Field label="Capacidad (Estudiantes)">
+                                                <Input
+                                                    type="number"
+                                                    className="rounded-xl"
+                                                    value={classForm.capacity}
+                                                    onChange={(e) => setClassForm({ ...classForm, capacity: parseInt(e.target.value || "0", 10) })}
+                                                />
+                                            </Field>
+
+                                            <Field label="Sede Asignada">
+                                                <Select
+                                                    value={classForm.campus_id || String(selCampus || "")}
+                                                    onValueChange={(v) => setClassForm({ ...classForm, campus_id: v })}
+                                                >
+                                                    <SelectTrigger className="rounded-xl">
+                                                        <SelectValue />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        {campuses.map((c) => (
+                                                            <SelectItem key={c.id} value={String(c.id)}>
+                                                                {c.name}
+                                                            </SelectItem>
+                                                        ))}
+                                                    </SelectContent>
+                                                </Select>
+                                            </Field>
+                                        </div>
+
+                                        <div className="flex justify-end pt-2 gap-2">
+                                            <Button variant="outline" className="rounded-xl" onClick={() => setOpenClass(false)}>
+                                                Cancelar
+                                            </Button>
+                                            <Button onClick={saveClass} className="rounded-xl bg-blue-600 w-full sm:w-auto">
+                                                {editingClass ? "Guardar cambios" : "Guardar Aula"}
+                                            </Button>
+                                        </div>
+                                    </div>
+                                </DialogContent>
+                            </Dialog>
+                        </div>
+                    </CardHeader>
+
+                    <CardContent className="p-0 overflow-x-auto min-h-[300px]">
+                        <table className="w-full text-sm text-left border-collapse table-fixed">
+                            <thead className="bg-slate-50 text-slate-500 uppercase text-xs font-semibold tracking-wider">
+                                <tr>
+                                    <th className="px-6 py-4 border-b border-slate-100 w-40">Código</th>
+                                    <th className="px-6 py-4 border-b border-slate-100">Nombre del Aula</th>
+                                    <th className="px-6 py-4 border-b border-slate-100 w-40 text-center">Capacidad</th>
+                                    <th className="px-6 py-4 border-b border-slate-100 w-28 text-right">Acciones</th>
+                                </tr>
+                            </thead>
+
+                            <tbody className="divide-y divide-slate-100">
+                                {classrooms.map((a) => (
+                                    <tr key={a.id} className="hover:bg-blue-50/30 transition-colors group">
+                                        <td className="px-6 py-4 font-mono text-slate-600 truncate">{a.code}</td>
+                                        <td className="px-6 py-4 font-medium text-slate-700 truncate">{a.name}</td>
+                                        <td className="px-6 py-4 text-center">
+                                            <Badge variant="secondary" className="bg-slate-100 text-slate-600 font-normal">
+                                                {a.capacity} pax
+                                            </Badge>
+                                        </td>
+
+                                        <td className="px-6 py-4 text-right">
+                                            <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                <Button
+                                                    size="icon"
+                                                    variant="ghost"
+                                                    className="h-8 w-8 rounded-full text-slate-400 hover:text-blue-600 hover:bg-blue-50"
+                                                    onClick={() => onEditClassroom(a)}
+                                                >
+                                                    <Settings className="h-4 w-4" />
+                                                </Button>
+
+                                                <AlertDialog>
+                                                    <AlertDialogTrigger asChild>
+                                                        <Button
+                                                            size="icon"
+                                                            variant="ghost"
+                                                            className="h-8 w-8 rounded-full text-slate-400 hover:text-red-600 hover:bg-red-50"
+                                                        >
+                                                            <Trash2 className="h-4 w-4" />
+                                                        </Button>
+                                                    </AlertDialogTrigger>
+
+                                                    <AlertDialogContent className="max-w-[92vw] sm:max-w-md rounded-2xl">
+                                                        <AlertDialogHeader>
+                                                            <AlertDialogTitle className="flex items-center gap-2 text-red-600">
+                                                                <AlertCircle className="h-5 w-5" />
+                                                                ¿Eliminar aula?
+                                                            </AlertDialogTitle>
+                                                            <AlertDialogDescription className="text-slate-600">
+                                                                Esta acción eliminará permanentemente el aula{" "}
+                                                                <span className="font-bold text-slate-900">{a.name}</span>.
+                                                                <br />
+                                                                ¿Deseas continuar?
+                                                            </AlertDialogDescription>
+                                                        </AlertDialogHeader>
+
+                                                        <AlertDialogFooter className="flex-col sm:flex-row gap-2 mt-4">
+                                                            <AlertDialogCancel className="w-full sm:w-auto rounded-xl border-slate-200">
+                                                                Cancelar
+                                                            </AlertDialogCancel>
+                                                            <AlertDialogAction
+                                                                className="w-full sm:w-auto bg-red-600 hover:bg-red-700 rounded-xl"
+                                                                onClick={() => removeClassroom(a)}
+                                                            >
+                                                                Sí, eliminar
+                                                            </AlertDialogAction>
+                                                        </AlertDialogFooter>
+                                                    </AlertDialogContent>
+                                                </AlertDialog>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ))}
+
+                                {classrooms.length === 0 && (
+                                    <tr>
+                                        <td colSpan={4} className="text-center py-20">
+                                            <div className="flex flex-col items-center justify-center text-slate-300">
+                                                <div className="bg-slate-50 p-4 rounded-full mb-3">
+                                                    <Building2 className="h-8 w-8 text-slate-300" />
+                                                </div>
+                                                <p className="text-lg font-medium text-slate-400">Sin aulas registradas</p>
+                                                <p className="text-xs text-slate-400">Seleccione una sede o cree una nueva aula.</p>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </CardContent>
+                </Card>
             </div>
         </Section>
     );
 };
 
 // ===============================================================
-// Docentes (✅ CREATE + ✅ EDIT + ✅ DELETE)
+// Docentes
 // ===============================================================
 const TeachersSection = () => {
     const [rows, setRows] = useState([]);
     const [loading, setLoading] = useState(true);
-
-    // modal crear
-    const [openCreate, setOpenCreate] = useState(false);
-
-    // modal editar
-    const [openEdit, setOpenEdit] = useState(false);
-    const [editingTeacher, setEditingTeacher] = useState(null);
-
-    // formulario (reusado en crear/editar)
+    const [open, setOpen] = useState(false);
     const [form, setForm] = useState({
         document: "",
         full_name: "",
@@ -661,14 +1024,6 @@ const TeachersSection = () => {
         phone: "",
         specialization: "",
     });
-
-    // cursos
-    const [courses, setCourses] = useState([]);
-    const [selectedCourses, setSelectedCourses] = useState([]);
-
-    // credenciales
-    const [creds, setCreds] = useState(null);
-    const [openCreds, setOpenCreds] = useState(false);
 
     const load = useCallback(async () => {
         try {
@@ -684,92 +1039,22 @@ const TeachersSection = () => {
 
     useEffect(() => { load(); }, [load]);
 
-    const resetTeacherForm = () => {
-        setForm({ document: "", full_name: "", email: "", phone: "", specialization: "" });
-        setSelectedCourses([]);
-    };
-
-    const fetchAcademicCourses = async () => {
-        const res = await AcademicCourses.list();
-        setCourses(res?.items ?? []);
-    };
-
-    // ----- CREATE -----
-    const openCreateTeacher = async () => {
-        try {
-            await fetchAcademicCourses();
-            resetTeacherForm();
-            setOpenCreate(true);
-        } catch (e) {
-            toast.error(formatApiError(e, "No se pudo cargar cursos"));
-        }
-    };
-
-    const saveCreate = async () => {
+    const save = async () => {
         try {
             if (!form.document?.trim()) return toast.error("Documento es requerido");
             if (!form.full_name?.trim()) return toast.error("Nombre completo es requerido");
 
-            const payload = { ...form, courses: selectedCourses.map((x) => Number(x)) };
-            const created = await Teachers.create(payload);
-
-            if (created?.username && created?.temporary_password) {
-                setCreds({ username: created.username, temporary_password: created.temporary_password });
-                setOpenCreds(true);
-            }
-
+            await Teachers.create(form);
+            setOpen(false);
+            setForm({ document: "", full_name: "", email: "", phone: "", specialization: "" });
+            load();
             toast.success("Docente creado");
-            setOpenCreate(false);
-            resetTeacherForm();
-            load();
         } catch (e) {
             toast.error(formatApiError(e));
         }
     };
 
-    // ----- EDIT -----
-    const openEditTeacher = async (t) => {
-        try {
-            await fetchAcademicCourses();
-
-            setEditingTeacher(t);
-            setForm({
-                document: t.document || "",
-                full_name: t.full_name || "",
-                email: t.email || "",
-                phone: t.phone || "",
-                specialization: t.specialization || "",
-            });
-
-            setSelectedCourses((t.courses || []).map(String));
-            setOpenEdit(true);
-        } catch (e) {
-            toast.error(formatApiError(e, "No se pudo abrir edición"));
-        }
-    };
-
-    const saveEdit = async () => {
-        try {
-            if (!editingTeacher?.id) return;
-
-            if (!form.document?.trim()) return toast.error("Documento es requerido");
-            if (!form.full_name?.trim()) return toast.error("Nombre completo es requerido");
-
-            const payload = { ...form, courses: selectedCourses.map((x) => Number(x)) };
-            await Teachers.update(editingTeacher.id, payload);
-
-            toast.success("Docente actualizado");
-            setOpenEdit(false);
-            setEditingTeacher(null);
-            resetTeacherForm();
-            load();
-        } catch (e) {
-            toast.error(formatApiError(e));
-        }
-    };
-
-    // ----- DELETE -----
-    const removeTeacher = async (id) => {
+    const remove = async (id) => {
         try {
             await Teachers.remove(id);
             toast.success("Docente eliminado");
@@ -778,94 +1063,6 @@ const TeachersSection = () => {
             toast.error(formatApiError(e));
         }
     };
-
-    const CoursesChecklist = () => (
-        <div className="space-y-2">
-            <Label>Asignar cursos (opcional)</Label>
-            <div className="max-h-52 overflow-y-auto border rounded-xl p-3 bg-slate-50">
-                {courses.map((c) => {
-                    const checked = selectedCourses.includes(String(c.id));
-                    return (
-                        <label key={c.id} className="flex items-center gap-2 py-1 text-sm cursor-pointer">
-                            <input
-                                type="checkbox"
-                                checked={checked}
-                                onChange={(e) => {
-                                    const id = String(c.id);
-                                    setSelectedCourses((prev) => {
-                                        const s = new Set(prev);
-                                        if (e.target.checked) s.add(id);
-                                        else s.delete(id);
-                                        return Array.from(s);
-                                    });
-                                }}
-                            />
-                            <span className="font-mono text-xs text-slate-500">{c.code}</span>
-                            <span className="text-slate-700">{c.name}</span>
-                        </label>
-                    );
-                })}
-
-                {courses.length === 0 && (
-                    <div className="text-xs text-slate-400">No hay cursos disponibles</div>
-                )}
-            </div>
-        </div>
-    );
-
-    const TeacherFormFields = () => (
-        <div className="space-y-5 py-3">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <Field label="Documento de Identidad *">
-                    <Input
-                        className="rounded-xl"
-                        placeholder="DNI / CE"
-                        value={form.document}
-                        onChange={(e) => setForm({ ...form, document: e.target.value })}
-                    />
-                </Field>
-                <Field label="Nombre Completo *">
-                    <Input
-                        className="rounded-xl"
-                        placeholder="Apellidos y Nombres"
-                        value={form.full_name}
-                        onChange={(e) => setForm({ ...form, full_name: e.target.value })}
-                    />
-                </Field>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <Field label="Correo Electrónico">
-                    <Input
-                        type="email"
-                        className="rounded-xl"
-                        placeholder="docente@email.com"
-                        value={form.email}
-                        onChange={(e) => setForm({ ...form, email: e.target.value })}
-                    />
-                </Field>
-                <Field label="Teléfono / Celular">
-                    <Input
-                        className="rounded-xl"
-                        placeholder="999 999 999"
-                        value={form.phone}
-                        onChange={(e) => setForm({ ...form, phone: e.target.value })}
-                    />
-                </Field>
-            </div>
-
-            <Field label="Especialidad / Área">
-                <Input
-                    className="rounded-xl"
-                    placeholder="Ej. Matemáticas, Ciencias, Historia..."
-                    value={form.specialization}
-                    onChange={(e) => setForm({ ...form, specialization: e.target.value })}
-                />
-            </Field>
-
-            <CoursesChecklist />
-        </div>
-    );
 
     return (
         <Section
@@ -887,15 +1084,87 @@ const TeachersSection = () => {
                     />
                 </div>
 
-                <Button
-                    className="rounded-xl bg-blue-600 hover:bg-blue-700 shadow-md transition-all gap-2"
-                    onClick={openCreateTeacher}
+                <Dialog
+                    open={open}
+                    onOpenChange={(v) => {
+                        setOpen(v);
+                        if (!v) setForm({ document: "", full_name: "", email: "", phone: "", specialization: "" });
+                    }}
                 >
-                    <Plus className="h-4 w-4" /> Nuevo docente
-                </Button>
+                    <DialogTrigger asChild>
+                        <Button className="rounded-xl bg-blue-600 hover:bg-blue-700 shadow-md transition-all gap-2">
+                            <Plus className="h-4 w-4" /> Nuevo docente
+                        </Button>
+                    </DialogTrigger>
+
+                    <DialogContent className="sm:max-w-lg rounded-2xl">
+                        <DialogHeader>
+                            <DialogTitle className="text-xl text-slate-800 flex items-center gap-2">
+                                <UserPlus className="h-5 w-5 text-blue-600" />
+                                Registrar Docente
+                            </DialogTitle>
+                            <DialogDescription>Complete la ficha técnica del profesor.</DialogDescription>
+                        </DialogHeader>
+
+                        <div className="space-y-5 py-3">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <Field label="Documento de Identidad *">
+                                    <Input
+                                        className="rounded-xl"
+                                        placeholder="DNI / CE"
+                                        value={form.document}
+                                        onChange={(e) => setForm({ ...form, document: e.target.value })}
+                                    />
+                                </Field>
+                                <Field label="Nombre Completo *">
+                                    <Input
+                                        className="rounded-xl"
+                                        placeholder="Apellidos y Nombres"
+                                        value={form.full_name}
+                                        onChange={(e) => setForm({ ...form, full_name: e.target.value })}
+                                    />
+                                </Field>
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <Field label="Correo Electrónico">
+                                    <Input
+                                        type="email"
+                                        className="rounded-xl"
+                                        placeholder="docente@email.com"
+                                        value={form.email}
+                                        onChange={(e) => setForm({ ...form, email: e.target.value })}
+                                    />
+                                </Field>
+                                <Field label="Teléfono / Celular">
+                                    <Input
+                                        className="rounded-xl"
+                                        placeholder="999 999 999"
+                                        value={form.phone}
+                                        onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                                    />
+                                </Field>
+                            </div>
+
+                            <Field label="Especialidad / Área">
+                                <Input
+                                    className="rounded-xl"
+                                    placeholder="Ej. Matemáticas, Ciencias, Historia..."
+                                    value={form.specialization}
+                                    onChange={(e) => setForm({ ...form, specialization: e.target.value })}
+                                />
+                            </Field>
+
+                            <div className="flex justify-end pt-4 border-t border-slate-100">
+                                <Button onClick={save} className="rounded-xl bg-blue-600 hover:bg-blue-700 w-full sm:w-auto px-8 shadow-md">
+                                    Guardar Ficha
+                                </Button>
+                            </div>
+                        </div>
+                    </DialogContent>
+                </Dialog>
             </div>
 
-            {/* LISTA */}
             <Card className="rounded-2xl border-slate-200 shadow-sm bg-white overflow-hidden">
                 <CardContent className="p-0">
                     <div className="overflow-x-auto">
@@ -959,59 +1228,44 @@ const TeachersSection = () => {
                                         </td>
 
                                         <td className="px-6 py-4 text-right">
-                                            <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                {/* ✅ EDIT */}
-                                                <Button
-                                                    size="icon"
-                                                    variant="ghost"
-                                                    className="h-8 w-8 rounded-full text-slate-400 hover:text-blue-600 hover:bg-blue-50"
-                                                    onClick={() => openEditTeacher(r)}
-                                                    title="Editar"
-                                                >
-                                                    <Settings className="h-4 w-4" />
-                                                </Button>
+                                            <AlertDialog>
+                                                <AlertDialogTrigger asChild>
+                                                    <Button
+                                                        size="icon"
+                                                        variant="ghost"
+                                                        className="h-8 w-8 rounded-full text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                                                    >
+                                                        <Trash2 className="h-4 w-4" />
+                                                    </Button>
+                                                </AlertDialogTrigger>
 
-                                                {/* ✅ DELETE */}
-                                                <AlertDialog>
-                                                    <AlertDialogTrigger asChild>
-                                                        <Button
-                                                            size="icon"
-                                                            variant="ghost"
-                                                            className="h-8 w-8 rounded-full text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
-                                                            title="Eliminar"
+                                                <AlertDialogContent className="max-w-[92vw] sm:max-w-md rounded-2xl">
+                                                    <AlertDialogHeader>
+                                                        <AlertDialogTitle className="flex items-center gap-2 text-red-600">
+                                                            <AlertCircle className="h-5 w-5" />
+                                                            ¿Eliminar docente?
+                                                        </AlertDialogTitle>
+                                                        <AlertDialogDescription className="text-slate-600">
+                                                            Esta acción eliminará permanentemente a{" "}
+                                                            <span className="font-bold text-slate-900">{r.full_name}</span> del sistema.
+                                                            <br />
+                                                            ¿Está seguro de continuar?
+                                                        </AlertDialogDescription>
+                                                    </AlertDialogHeader>
+
+                                                    <AlertDialogFooter className="flex-col sm:flex-row gap-2 mt-4">
+                                                        <AlertDialogCancel className="w-full sm:w-auto rounded-xl border-slate-200">
+                                                            Cancelar
+                                                        </AlertDialogCancel>
+                                                        <AlertDialogAction
+                                                            className="w-full sm:w-auto bg-red-600 hover:bg-red-700 rounded-xl"
+                                                            onClick={() => remove(r.id)}
                                                         >
-                                                            <Trash2 className="h-4 w-4" />
-                                                        </Button>
-                                                    </AlertDialogTrigger>
-
-                                                    <AlertDialogContent className="max-w-[92vw] sm:max-w-md rounded-2xl">
-                                                        <AlertDialogHeader>
-                                                            <AlertDialogTitle className="flex items-center gap-2 text-red-600">
-                                                                <AlertCircle className="h-5 w-5" />
-                                                                ¿Eliminar docente?
-                                                            </AlertDialogTitle>
-                                                            <AlertDialogDescription className="text-slate-600">
-                                                                Esta acción eliminará permanentemente a{" "}
-                                                                <span className="font-bold text-slate-900">{r.full_name}</span> del sistema.
-                                                                <br />
-                                                                ¿Está seguro de continuar?
-                                                            </AlertDialogDescription>
-                                                        </AlertDialogHeader>
-
-                                                        <AlertDialogFooter className="flex-col sm:flex-row gap-2 mt-4">
-                                                            <AlertDialogCancel className="w-full sm:w-auto rounded-xl border-slate-200">
-                                                                Cancelar
-                                                            </AlertDialogCancel>
-                                                            <AlertDialogAction
-                                                                className="w-full sm:w-auto bg-red-600 hover:bg-red-700 rounded-xl"
-                                                                onClick={() => removeTeacher(r.id)}
-                                                            >
-                                                                Sí, eliminar
-                                                            </AlertDialogAction>
-                                                        </AlertDialogFooter>
-                                                    </AlertDialogContent>
-                                                </AlertDialog>
-                                            </div>
+                                                            Sí, eliminar
+                                                        </AlertDialogAction>
+                                                    </AlertDialogFooter>
+                                                </AlertDialogContent>
+                                            </AlertDialog>
                                         </td>
                                     </tr>
                                 ))}
@@ -1045,100 +1299,12 @@ const TeachersSection = () => {
                     </div>
                 </CardContent>
             </Card>
-
-            {/* MODAL CREATE */}
-            <Dialog open={openCreate} onOpenChange={setOpenCreate}>
-                <DialogContent className="sm:max-w-lg rounded-2xl">
-                    <DialogHeader>
-                        <DialogTitle className="text-xl text-slate-800 flex items-center gap-2">
-                            <UserPlus className="h-5 w-5 text-blue-600" />
-                            Registrar Docente
-                        </DialogTitle>
-                        <DialogDescription>Complete la ficha técnica del profesor.</DialogDescription>
-                    </DialogHeader>
-
-                    {TeacherFormFields()}
-
-                    <div className="flex justify-end pt-4 border-t border-slate-100 gap-2">
-                        <Button variant="outline" className="rounded-xl" onClick={() => setOpenCreate(false)}>
-                            Cancelar
-                        </Button>
-                        <Button onClick={saveCreate} className="rounded-xl bg-blue-600 hover:bg-blue-700 px-8 shadow-md">
-                            Guardar
-                        </Button>
-                    </div>
-                </DialogContent>
-            </Dialog>
-
-            {/* MODAL EDIT */}
-            <Dialog open={openEdit} onOpenChange={setOpenEdit}>
-                <DialogContent className="sm:max-w-lg rounded-2xl">
-                    <DialogHeader>
-                        <DialogTitle className="text-xl text-slate-800 flex items-center gap-2">
-                            <Settings className="h-5 w-5 text-blue-600" />
-                            Editar Docente
-                        </DialogTitle>
-                        <DialogDescription>Actualiza datos y cursos asignados.</DialogDescription>
-                    </DialogHeader>
-
-                    {TeacherFormFields()}
-
-                    <div className="flex justify-end pt-4 border-t border-slate-100 gap-2">
-                        <Button
-                            variant="outline"
-                            className="rounded-xl"
-                            onClick={() => {
-                                setOpenEdit(false);
-                                setEditingTeacher(null);
-                                resetTeacherForm();
-                            }}
-                        >
-                            Cancelar
-                        </Button>
-                        <Button onClick={saveEdit} className="rounded-xl bg-blue-600 hover:bg-blue-700 px-8 shadow-md">
-                            Guardar cambios
-                        </Button>
-                    </div>
-                </DialogContent>
-            </Dialog>
-
-            {/* MODAL CREDENCIALES */}
-            <Dialog open={openCreds} onOpenChange={setOpenCreds}>
-                <DialogContent className="rounded-2xl sm:max-w-md">
-                    <DialogHeader>
-                        <DialogTitle>Credenciales del docente</DialogTitle>
-                        <DialogDescription>
-                            Copia esto ahora. Si se pierde, se puede resetear desde Usuarios (ya tienes endpoint).
-                        </DialogDescription>
-                    </DialogHeader>
-
-                    <div className="space-y-3 text-sm">
-                        <div className="p-3 rounded-xl bg-slate-50 border">
-                            <div><b>Usuario:</b> <span className="font-mono">{creds?.username}</span></div>
-                            <div><b>Contraseña temporal:</b> <span className="font-mono">{creds?.temporary_password}</span></div>
-                        </div>
-
-                        <Button
-                            className="rounded-xl w-full"
-                            onClick={() => {
-                                navigator.clipboard.writeText(
-                                    `Usuario: ${creds?.username}\nPassword: ${creds?.temporary_password}`
-                                );
-                                toast.success("Copiado");
-                            }}
-                        >
-                            Copiar credenciales
-                        </Button>
-                    </div>
-                </DialogContent>
-            </Dialog>
         </Section>
     );
 };
 
 // ===============================================================
 // Ubigeo + Parámetros de institución (logo/firma)
-// (Deja tu implementación tal cual la tienes; no la toqué.)
 // ===============================================================
 const MediaUpload = ({ label, url, onChange, loading }) => {
     const [localPreview, setLocalPreview] = React.useState("");
@@ -1173,7 +1339,7 @@ const MediaUpload = ({ label, url, onChange, loading }) => {
                 <div className="w-full space-y-1">
                     <Input
                         type="file"
-                        accept="image/png,image/jpeg"
+                        accept="image/*"
                         className="w-full"
                         disabled={!!loading}
                         onChange={(e) => {
@@ -1204,31 +1370,673 @@ const MediaUpload = ({ label, url, onChange, loading }) => {
 };
 
 const InstitutionSection = () => {
-    // deja tu sección igual
+    const [settings, setSettings] = useState(null);
+
+    const [uploadingKind, setUploadingKind] = useState(null);
+
+    const [dept, setDept] = useState("");
+    const [prov, setProv] = useState("");
+    const [dist, setDist] = useState("");
+
+    const [deps, setDeps] = useState([]);
+    const [provs, setProvs] = useState([]);
+    const [dists, setDists] = useState([]);
+
+    const load = useCallback(async () => {
+        try {
+            const s = await Institution.getSettings();
+            setSettings(s ?? {});
+
+            const d = await Ubigeo.deps();
+            setDeps(normalizeUbigeoList(d));
+
+            const sDept = String(s?.department || "");
+            const sProv = String(s?.province || "");
+            const sDist = String(s?.district || "");
+
+            if (sDept) {
+                setDept(sDept);
+
+                const pv = await Ubigeo.provs(sDept);
+                setProvs(normalizeUbigeoList(pv));
+
+                if (sProv) {
+                    setProv(sProv);
+
+                    const ds = await Ubigeo.dists(sDept, sProv);
+                    setDists(normalizeUbigeoList(ds));
+
+                    if (sDist) setDist(sDist);
+                }
+            }
+        } catch (e) {
+            toast.error(formatApiError(e));
+        }
+    }, []);
+
+    useEffect(() => { load(); }, [load]);
+
+    const update = async () => {
+        try {
+            await Institution.updateSettings({
+                ...settings,
+                department: dept,
+                province: prov,
+                district: dist,
+            });
+            toast.success("Parámetros guardados");
+            load();
+        } catch (e) {
+            toast.error(formatApiError(e));
+        }
+    };
+
+    const onUpload = async (kind, file) => {
+        try {
+            setUploadingKind(kind);
+
+            const r = await Institution.uploadMedia(kind, file);
+            toast.success("Archivo subido");
+
+            let url = r?.url || r?.file || r?.file_url;
+
+            const API_BASE = import.meta?.env?.VITE_API_URL || import.meta?.env?.VITE_API_BASE_URL || "";
+            if (url && !/^https?:\/\//i.test(url) && API_BASE) {
+                url = `${API_BASE.replace(/\/$/, "")}/${String(url).replace(/^\//, "")}`;
+            }
+
+            setSettings((s) => ({
+                ...s,
+                ...(kind === "LOGO"
+                    ? { logo_url: url }
+                    : kind === "SIGNATURE"
+                        ? { signature_url: url }
+                        : {}),
+            }));
+        } catch (e) {
+            toast.error(formatApiError(e));
+        } finally {
+            setUploadingKind(null);
+        }
+    };
+
     return (
-        <Section title="Institución" desc="(Deja tu código tal cual; no se alteró para este cambio)">
-            <div className="text-sm text-slate-500">
-                Pega aquí tu InstitutionSection original sin cambios.
-            </div>
+        <Section
+            title={
+                <div className="flex items-center gap-2">
+                    <div className="p-2 bg-blue-100 rounded-lg">
+                        <Settings className="h-5 w-5 text-blue-600" />
+                    </div>
+                    <span className="text-xl font-bold text-gray-800">Parámetros de institución</span>
+                </div>
+            }
+            desc="Configure la información general, ubicación y elementos de identidad visual."
+        >
+            {!settings ? (
+                <div className="flex flex-col items-center justify-center py-20 bg-white rounded-2xl border border-dashed border-slate-200">
+                    <div className="animate-spin rounded-full h-10 w-10 border-4 border-slate-100 border-t-blue-600 mb-4" />
+                    <p className="text-slate-400 font-medium">Cargando configuración...</p>
+                </div>
+            ) : (
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                    <Card className="lg:col-span-2 rounded-2xl border-slate-200 shadow-sm bg-white overflow-hidden">
+                        <CardHeader className="border-b border-slate-100 bg-slate-50/50 py-4">
+                            <CardTitle className="text-lg text-slate-800 flex items-center gap-2">
+                                <Building2 className="h-4 w-4 text-slate-500" />
+                                Información General
+                            </CardTitle>
+                        </CardHeader>
+
+                        <CardContent className="p-6 space-y-8">
+                            <div className="space-y-4">
+                                <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Identidad Legal</h3>
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
+                                    <div className="sm:col-span-2">
+                                        <Field label="Nombre o Razón Social *">
+                                            <Input
+                                                className="rounded-xl bg-slate-50 focus:bg-white transition-colors"
+                                                value={settings.name || ""}
+                                                onChange={(e) => setSettings({ ...settings, name: e.target.value })}
+                                                placeholder="Ej. Institución Educativa..."
+                                            />
+                                        </Field>
+                                    </div>
+                                    <div>
+                                        <Field label="RUC / Identificador">
+                                            <Input
+                                                className="rounded-xl bg-slate-50 focus:bg-white transition-colors font-mono text-sm"
+                                                value={settings.ruc || ""}
+                                                onChange={(e) => setSettings({ ...settings, ruc: e.target.value })}
+                                                placeholder="20123456789"
+                                            />
+                                        </Field>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <hr className="border-slate-100" />
+
+                            <div className="space-y-4">
+                                <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Ubicación Geográfica</h3>
+
+                                <Field label="Dirección Fiscal">
+                                    <div className="relative">
+                                        <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                                        <Input
+                                            className="rounded-xl pl-10 bg-slate-50 focus:bg-white transition-colors"
+                                            value={settings.address || ""}
+                                            onChange={(e) => setSettings({ ...settings, address: e.target.value })}
+                                            placeholder="Av. Principal #123..."
+                                        />
+                                    </div>
+                                </Field>
+
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                                    <Field label="Departamento">
+                                        <Select
+                                            value={dept}
+                                            onValueChange={async (v) => {
+                                                setDept(v);
+                                                setProv("");
+                                                setDist("");
+                                                setDists([]);
+
+                                                const pv = await Ubigeo.provs(v);
+                                                setProvs(normalizeUbigeoList(pv));
+                                            }}
+                                        >
+                                            <SelectTrigger className="w-full rounded-xl bg-slate-50 border-slate-200">
+                                                <SelectValue placeholder="Seleccionar" />
+                                            </SelectTrigger>
+                                            <SelectContent position="popper" className="max-h-60">
+                                                {deps.map((d) => (
+                                                    <SelectItem key={d.code} value={d.code}>
+                                                        {d.name}
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </Field>
+
+                                    <Field label="Provincia">
+                                        <Select
+                                            value={prov}
+                                            disabled={!dept}
+                                            onValueChange={async (v) => {
+                                                setProv(v);
+                                                setDist("");
+
+                                                const ds = await Ubigeo.dists(dept, v);
+                                                setDists(normalizeUbigeoList(ds));
+                                            }}
+                                        >
+                                            <SelectTrigger className="w-full rounded-xl bg-slate-50 border-slate-200">
+                                                <SelectValue placeholder="Seleccionar" />
+                                            </SelectTrigger>
+                                            <SelectContent position="popper" className="max-h-60">
+                                                {provs.map((p) => (
+                                                    <SelectItem key={p.code} value={p.code}>
+                                                        {p.name}
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </Field>
+
+                                    <Field label="Distrito">
+                                        <Select value={dist} onValueChange={setDist} disabled={!dept || !prov}>
+                                            <SelectTrigger className="w-full rounded-xl bg-slate-50 border-slate-200">
+                                                <SelectValue placeholder="Seleccionar" />
+                                            </SelectTrigger>
+                                            <SelectContent position="popper" className="max-h-60">
+                                                {dists.map((d) => (
+                                                    <SelectItem key={d.code} value={d.code}>
+                                                        {d.name}
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </Field>
+                                </div>
+                            </div>
+
+                            <hr className="border-slate-100" />
+
+                            <div className="space-y-4">
+                                <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Canales de Contacto</h3>
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
+                                    <Field label="Sitio Web">
+                                        <Input
+                                            className="rounded-xl bg-slate-50 focus:bg-white transition-colors text-sm"
+                                            value={settings.website || ""}
+                                            onChange={(e) => setSettings({ ...settings, website: e.target.value })}
+                                            placeholder="www.ejemplo.edu.pe"
+                                        />
+                                    </Field>
+
+                                    <Field label="Correo Electrónico">
+                                        <Input
+                                            className="rounded-xl bg-slate-50 focus:bg-white transition-colors text-sm"
+                                            value={settings.email || ""}
+                                            onChange={(e) => setSettings({ ...settings, email: e.target.value })}
+                                            placeholder="contacto@institucion.com"
+                                        />
+                                    </Field>
+
+                                    <Field label="Teléfono / Celular">
+                                        <Input
+                                            className="rounded-xl bg-slate-50 focus:bg-white transition-colors text-sm"
+                                            value={settings.phone || ""}
+                                            onChange={(e) => setSettings({ ...settings, phone: e.target.value })}
+                                            placeholder="(01) 123-4567"
+                                        />
+                                    </Field>
+                                </div>
+                            </div>
+
+                            <div className="flex justify-end pt-4">
+                                <Button onClick={update} className="rounded-xl bg-blue-600 hover:bg-blue-700 shadow-md w-full sm:w-auto px-8 gap-2">
+                                    <Save className="h-4 w-4" />
+                                    Guardar Cambios
+                                </Button>
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    <div className="space-y-6">
+                        <Card className="rounded-2xl border-slate-200 shadow-sm bg-white">
+                            <CardHeader className="border-b border-slate-100 bg-slate-50/50 py-4">
+                                <CardTitle className="text-lg text-slate-800 flex items-center gap-2">
+                                    <Image className="h-4 w-4 text-slate-500" />
+                                    Activos Digitales
+                                </CardTitle>
+                                <CardDescription>Logo principal y firma del director.</CardDescription>
+                            </CardHeader>
+
+                            <CardContent className="p-6 space-y-6">
+                                <div className="space-y-2">
+                                    <Label className="text-xs font-semibold text-slate-500 uppercase">Logo Principal</Label>
+                                    <div className="p-1 border-2 border-dashed border-slate-200 rounded-xl bg-slate-50/50 hover:bg-slate-50 transition-colors">
+                                        <MediaUpload
+                                            label="Subir logo"
+                                            url={settings.logo_url}
+                                            loading={uploadingKind === "LOGO"}
+                                            onChange={(f) => onUpload("LOGO", f)}
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <Label className="text-xs font-semibold text-slate-500 uppercase">Firma del Director</Label>
+                                    <div className="p-1 border-2 border-dashed border-slate-200 rounded-xl bg-slate-50/50 hover:bg-slate-50 transition-colors">
+                                        <MediaUpload
+                                            label="Subir firma"
+                                            url={settings.signature_url}
+                                            loading={uploadingKind === "SIGNATURE"}
+                                            onChange={(f) => onUpload("SIGNATURE", f)}
+                                        />
+                                    </div>
+                                    <p className="text-[10px] text-slate-400 mt-1">Recomendado: Imagen PNG sin fondo.</p>
+                                </div>
+                            </CardContent>
+                        </Card>
+                    </div>
+                </div>
+            )}
         </Section>
     );
 };
 
 // ===============================================================
-// ImportersTab y BackupTab (Deja tal cual)
+// Importadores Excel/CSV (SIN MAPEO)
 // ===============================================================
 const ImportersTab = () => {
+    const [type, setType] = useState("students");
+    const [file, setFile] = useState(null);
+    const [job, setJob] = useState(null);
+    const [status, setStatus] = useState(null);
+    const [poll, setPoll] = useState(null);
+
+    useEffect(() => () => { if (poll) clearInterval(poll); }, [poll]);
+
+    const start = async () => {
+        if (!file) { toast.error("Adjunta un archivo"); return; }
+        try {
+            // 👇 si tu Imports.start acepta 3 params, deja el 3ro undefined o {}
+            const res = await Imports.start(type, file /*, undefined */);
+
+            const jobId = res?.job_id || res?.id;
+            setJob(jobId);
+            toast.success("Importación encolada");
+
+            const timer = setInterval(async () => {
+                try {
+                    const st = await Imports.status(jobId);
+                    setStatus(st);
+                    if (st?.state === "COMPLETED" || st?.state === "FAILED") {
+                        clearInterval(timer);
+                        setPoll(null);
+                    }
+                } catch { }
+            }, 1500);
+
+            setPoll(timer);
+        } catch (e) {
+            toast.error(formatApiError(e));
+        }
+    };
+
+    const downloadTemplate = async () => {
+        try {
+            const res = await Imports.downloadTemplate(type);
+
+            const cd = res.headers?.["content-disposition"];
+            const fallback = `${type}_template.xlsx`;
+            const filename = filenameFromContentDisposition(cd, fallback);
+
+            const blob = new Blob([res.data], {
+                type: res.headers?.["content-type"] || "application/octet-stream",
+            });
+
+            saveBlobAsFile(blob, filename);
+            toast.success("Plantilla descargada");
+        } catch (e) {
+            toast.error(formatApiError(e, "No se pudo descargar la plantilla"));
+        }
+    };
+
     return (
-        <div className="text-sm text-slate-500">
-            (Deja tu ImportersTab original tal cual)
+        <div className="space-y-6 pb-24 sm:pb-6">
+            <Section
+                title={
+                    <>
+                        <FileSpreadsheet className="h-5 w-5 text-blue-600" />
+                        Importadores Excel/CSV
+                    </>
+                }
+                desc="Carga masiva de planes de Estudios, alumnos y notas históricas."
+            >
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <Field label="Tipo de importación">
+                        <Select value={type} onValueChange={setType}>
+                            <SelectTrigger><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="plans">Plan de estudios</SelectItem>
+                                <SelectItem value="students">Alumnos</SelectItem>
+                                <SelectItem value="grades">Notas históricas</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </Field>
+
+                    <Field label="Plantilla (descargar)">
+                        <Button
+                            type="button"
+                            variant="outline"
+                            className="rounded-xl inline-flex items-center gap-2"
+                            onClick={downloadTemplate}
+                        >
+                            <Download className="h-4 w-4" />
+                            Descargar plantilla
+                        </Button>
+                    </Field>
+
+                    <Field label="Archivo Excel/CSV">
+                        <Input
+                            type="file"
+                            accept=".xlsx,.xls,.csv"
+                            onChange={(e) => setFile(e.target.files?.[0] || null)}
+                        />
+                        {file && (
+                            <div className="text-xs text-gray-500 mt-1">
+                                {file.name} · {(file.size / 1024).toFixed(1)} KB
+                            </div>
+                        )}
+                    </Field>
+                </div>
+
+                <div className="flex justify-end gap-2 mt-4">
+                    <Button
+                        variant="outline"
+                        className="rounded-xl"
+                        onClick={() => {
+                            setFile(null);
+                            setStatus(null);
+                            setJob(null);
+                        }}
+                    >
+                        Limpiar
+                    </Button>
+
+                    <Button onClick={start} className="rounded-xl">
+                        <UploadCloud className="h-4 w-4 mr-2" />
+                        Iniciar importación
+                    </Button>
+                </div>
+
+                {(job || status) && (
+                    <Card className="mt-6 rounded-2xl">
+                        <CardHeader>
+                            <CardTitle className="text-base">Estado del proceso</CardTitle>
+                        </CardHeader>
+                        <CardContent className="text-sm">
+                            <div className="flex items-center gap-2">
+                                {status?.state === "COMPLETED" ? (
+                                    <CheckCircle className="h-5 w-5 text-green-600" />
+                                ) : status?.state === "FAILED" ? (
+                                    <XCircle className="h-5 w-5 text-red-600" />
+                                ) : (
+                                    <RefreshCw className="h-5 w-5 text-blue-600 animate-spin" />
+                                )}
+
+                                <div>
+                                    <div><strong>Job:</strong> {job || "-"}</div>
+                                    <div><strong>Estado:</strong> {status?.state || "EN COLA"}</div>
+                                    {status?.progress != null && <div><strong>Progreso:</strong> {Math.round(status.progress)}%</div>}
+                                    {Array.isArray(status?.errors) && status.errors.length > 0 && (
+                                        <div className="mt-2">
+                                            <strong>Errores:</strong>
+                                            <ul className="list-disc ml-5">
+                                                {status.errors.map((e, i) => <li key={i}>{e}</li>)}
+                                            </ul>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </CardContent>
+                    </Card>
+                )}
+            </Section>
         </div>
     );
 };
 
+// ===============================================================
+// Respaldo / Exportación
+// ===============================================================
 const BackupTab = () => {
+    const [rows, setRows] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [scope, setScope] = useState("FULL");
+
+    const load = useCallback(async () => {
+        try {
+            setLoading(true);
+            const data = await Backup.list();
+            setRows(data?.items ?? data ?? []);
+        } catch (e) {
+            toast.error(formatApiError(e));
+        } finally {
+            setLoading(false);
+        }
+    }, []);
+
+    useEffect(() => { load(); }, [load]);
+
+    const create = async () => {
+        try {
+            await Backup.create(scope);
+            toast.success("Respaldo programado");
+            load();
+        } catch (e) {
+            toast.error(formatApiError(e));
+        }
+    };
+
+    const exportDataset = async (ds) => {
+        try {
+            const res = await Backup.exportDataset(ds);
+            toast.success("Exportación generada");
+
+            await load();
+
+            const id = res?.backup_id;
+            if (id) {
+                const downloadRes = await Backup.download(id);
+
+                const cd = downloadRes.headers?.["content-disposition"];
+                const fallback = `export_${ds.toLowerCase()}_${id}.zip`;
+                const filename = filenameFromContentDisposition(cd, fallback);
+
+                const blob = new Blob([downloadRes.data], {
+                    type: downloadRes.headers?.["content-type"] || "application/octet-stream",
+                });
+
+                saveBlobAsFile(blob, filename);
+            }
+        } catch (e) {
+            toast.error(formatApiError(e));
+        }
+    };
+
+    const downloadBackup = async (b) => {
+        try {
+            const res = await Backup.download(b.id);
+
+            const cd = res.headers?.["content-disposition"];
+            const fallback = `backup_${b.id}.zip`;
+            const filename = filenameFromContentDisposition(cd, fallback);
+
+            const blob = new Blob([res.data], {
+                type: res.headers?.["content-type"] || "application/octet-stream",
+            });
+
+            saveBlobAsFile(blob, filename);
+            toast.success("Backup descargado");
+        } catch (e) {
+            toast.error(formatApiError(e, "No se pudo descargar el backup"));
+        }
+    };
+
     return (
-        <div className="text-sm text-slate-500">
-            (Deja tu BackupTab original tal cual)
+        <div className="space-y-6 pb-24 sm:pb-6">
+            <Section
+                title={
+                    <>
+                        <HardDriveDownload className="h-5 w-5 text-blue-600" />
+                        Respaldo & Exportación
+                    </>
+                }
+                desc="Genere respaldos completos o exporte datasets específicos."
+            >
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <Card className="rounded-2xl">
+                        <CardHeader>
+                            <CardTitle className="text-base">Nuevo respaldo</CardTitle>
+                            <CardDescription>Archivo comprimido con base de datos y adjuntos.</CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-3">
+                            <Field label="Ámbito">
+                                <Select value={scope} onValueChange={setScope}>
+                                    <SelectTrigger><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="FULL">Completo</SelectItem>
+                                        <SelectItem value="DATA_ONLY">Solo datos</SelectItem>
+                                        <SelectItem value="FILES_ONLY">Solo archivos</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </Field>
+
+                            <Button onClick={create} className="rounded-xl">
+                                <DatabaseZap className="h-4 w-4 mr-2" />
+                                Crear respaldo
+                            </Button>
+                        </CardContent>
+                    </Card>
+
+                    <Card className="lg:col-span-2 rounded-2xl">
+                        <CardHeader>
+                            <CardTitle className="text-base">Historial de respaldos</CardTitle>
+                        </CardHeader>
+                        <CardContent className="p-0">
+                            {loading ? (
+                                <div className="flex justify-center py-10">
+                                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600" />
+                                </div>
+                            ) : (
+                                <div className="overflow-x-auto">
+                                    <table className="w-full">
+                                        <thead className="bg-gray-50 border-b">
+                                            <tr>
+                                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Fecha</th>
+                                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Ámbito</th>
+                                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Tamaño</th>
+                                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Acciones</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y">
+                                            {rows.map((b) => (
+                                                <tr key={b.id}>
+                                                    <td className="px-6 py-3">{b.created_at ? new Date(b.created_at).toLocaleString() : "-"}</td>
+                                                    <td className="px-6 py-3">{b.scope || "-"}</td>
+                                                    <td className="px-6 py-3">{b.size ? `${(b.size / (1024 * 1024)).toFixed(2)} MB` : "-"}</td>
+                                                    <td className="px-6 py-3">
+                                                        <Button
+                                                            type="button"
+                                                            variant="outline"
+                                                            className="rounded-xl inline-flex items-center gap-1"
+                                                            onClick={() => downloadBackup(b)}
+                                                        >
+                                                            <Download className="h-4 w-4" /> Descargar
+                                                        </Button>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                            {rows.length === 0 && (
+                                                <tr>
+                                                    <td colSpan="4" className="text-center py-10 text-gray-500">
+                                                        Sin respaldos
+                                                    </td>
+                                                </tr>
+                                            )}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
+                        </CardContent>
+                    </Card>
+                </div>
+
+                <Card className="mt-6 rounded-2xl">
+                    <CardHeader>
+                        <CardTitle className="text-base">Exportar datasets</CardTitle>
+                        <CardDescription>Archivos CSV/ZIP de conjuntos puntuales.</CardDescription>
+                    </CardHeader>
+                    <CardContent className="flex flex-wrap gap-2">
+                        <Button variant="outline" className="rounded-xl" onClick={() => exportDataset("STUDENTS")}>
+                            <Download className="h-4 w-4 mr-2" /> Alumnos
+                        </Button>
+                        <Button variant="outline" className="rounded-xl" onClick={() => exportDataset("COURSES")}>
+                            <Download className="h-4 w-4 mr-2" /> Cursos
+                        </Button>
+                        <Button variant="outline" className="rounded-xl" onClick={() => exportDataset("GRADES")}>
+                            <Download className="h-4 w-4 mr-2" /> Notas
+                        </Button>
+                        <Button variant="outline" className="rounded-xl" onClick={() => exportDataset("CATALOGS")}>
+                            <Download className="h-4 w-4 mr-2" /> Catálogos
+                        </Button>
+                    </CardContent>
+                </Card>
+            </Section>
         </div>
     );
 };
@@ -1238,6 +2046,7 @@ const BackupTab = () => {
 // ===============================================================
 const ConfigCatalogsModule = () => {
     const { user, loading, hasAny } = useAuth();
+
     const canAccessCatalogs = hasAny(["admin.catalogs.view", "admin.catalogs.manage"]);
 
     if (loading) {

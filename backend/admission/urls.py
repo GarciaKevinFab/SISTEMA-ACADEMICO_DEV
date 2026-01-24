@@ -11,6 +11,11 @@ urlpatterns = [
     path("admission-calls", v.calls_collection),
     path("admission-calls/<int:call_id>/schedule", v.call_schedule_collection),
     path("admission-calls/<int:call_id>/schedule/<int:item_id>", v.call_schedule_detail),
+    
+    
+    path("admission/public/apply", v.public_apply),
+    path("admission/public/results", v.public_results),
+    path("admission-calls/public/<int:call_id>", v.call_detail_public),
 
     # Carreras (sin importaciones extra y sin duplicados)
     path("careers", v.careers_collection),                       # GET lista / POST crea

@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="es">
+
+<head>
+    <meta charset="utf-8" />
+    <style>
+        @page {
+            size: A4;
+            margin: 12mm;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            font-size: 11px;
+        }
+
+        h1 {
+            font-size: 14px;
+            margin: 0 0 8px;
+        }
+
+        .meta {
+            margin-bottom: 10px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th,
+        td {
+            border: 1px solid #111;
+            padding: 6px;
+        }
+
+        th {
+            background: #f2f2f2;
+        }
+
+        .right {
+            text-align: right;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Kárdex / Notas - {{ period }}</h1>
+    <div class="meta">
+        <div><b>Estudiante:</b> {{ student_name }}</div>
+        <div><b>Código/DNI:</b> {{ student_code }}</div>
+        <div><b>Carrera:</b> {{ career_name }}</div>
+    </div>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Curso</th>
+                <th>Código</th>
+                <th class="right">Créditos</th>
+                <th class="right">Nota</th>
+                <th>Estado</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for r in items %}
+            <tr>
+                <td>{{ r.course_name }}</td>
+                <td>{{ r.course_code }}</td>
+                <td class="right">{{ r.credits }}</td>
+                <td class="right">{{ r.grade }}</td>
+                <td>{{ r.status }}</td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="5" style="text-align:center;">Sin cursos en este periodo.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</body>
+
+</html>

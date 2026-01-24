@@ -1,0 +1,318 @@
+<!doctype html>
+<html lang="es">
+
+<head>
+    <meta charset="utf-8" />
+    <style>
+        @page {
+            size: A4;
+            margin: 10mm;
+        }
+
+        body {
+            font-family: Arial, Helvetica, sans-serif;
+            font-size: 10px;
+            color: #111;
+        }
+
+        .center {
+            text-align: center;
+        }
+
+        .bold {
+            font-weight: 700;
+        }
+
+        .tiny {
+            font-size: 8px;
+        }
+
+        .small {
+            font-size: 9px;
+        }
+
+        .mt6 {
+            margin-top: 6px;
+        }
+
+        .mt10 {
+            margin-top: 10px;
+        }
+
+        .mt14 {
+            margin-top: 14px;
+        }
+
+        .headerRow {
+            display: grid;
+            grid-template-columns: 70px 1fr 70px;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .logoBox {
+            width: 70px;
+            height: 70px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .logoBox img {
+            width: 70px;
+            height: 70px;
+            object-fit: contain;
+        }
+
+        .titleMain {
+            text-align: center;
+            font-weight: 800;
+            font-size: 12px;
+            letter-spacing: .2px;
+            text-transform: uppercase;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            table-layout: fixed;
+        }
+
+        th,
+        td {
+            border: 1px solid #111;
+            padding: 4px 5px;
+            vertical-align: middle;
+        }
+
+        th {
+            font-size: 9px;
+            font-weight: 800;
+            text-transform: uppercase;
+        }
+
+        .meta td {
+            font-size: 9px;
+        }
+
+        .meta td:nth-child(1) {
+            width: 190px;
+        }
+
+        .meta td:nth-child(2) {
+            width: auto;
+        }
+
+        .meta td:nth-child(3) {
+            width: 140px;
+        }
+
+        .meta td:nth-child(4) {
+            width: 90px;
+            text-align: center;
+        }
+
+        .num {
+            text-align: center;
+            font-weight: 700;
+        }
+
+        .centerCell {
+            text-align: center;
+        }
+
+        .avgRow {
+            margin-top: 10px;
+            width: 70%;
+        }
+
+        .avgRow td {
+            font-weight: 800;
+        }
+
+        .noteBox {
+            margin-top: 10px;
+            font-size: 8px;
+            line-height: 1.25;
+        }
+
+        .signRow {
+            margin-top: 18px;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 60px;
+            align-items: end;
+        }
+
+        .sigLine {
+            border-top: 1px solid #111;
+            height: 14px;
+        }
+
+        .sigLabel {
+            text-align: center;
+            margin-top: 3px;
+            font-weight: 700;
+            font-size: 9px;
+        }
+
+        .stampRow {
+            margin-top: 8px;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 60px;
+            align-items: center;
+        }
+
+        .sigImgBox {
+            height: 55px;
+            display: flex;
+            align-items: flex-end;
+            justify-content: center;
+            margin-bottom: 4px;
+        }
+
+        .sigImg {
+            max-height: 55px;
+            max-width: 180px;
+            object-fit: contain;
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- HEADER -->
+    <div class="headerRow">
+        <div class="logoBox">
+            {% if logo_url %}<img src="{{ logo_url }}" alt="logo" />{% endif %}
+        </div>
+
+        <div class="titleMain">REPORTE DE CALIFICACIONES DE CURSOS / MÓDULOS</div>
+
+        <div></div>
+    </div>
+
+    <!-- META -->
+    <div class="mt10">
+        <table class="meta">
+            <tbody>
+                <tr>
+                    <td class="bold">Nombre de la Institución</td>
+                    <td class="center bold">{{ institution_name }}</td>
+                    <td class="bold">Periodo Académico</td>
+                    <td class="center bold">{{ academic_period }}</td>
+                </tr>
+                <tr>
+                    <td class="bold">Programa de Estudios</td>
+                    <td class="bold">{{ program_name }}</td>
+                    <td class="bold">Ciclo - Sección</td>
+                    <td class="center bold">{{ cycle_section }}</td>
+                </tr>
+                <tr>
+                    <td class="bold">Apellidos y Nombres del Estudiante</td>
+                    <td class="bold">{{ student_name }}</td>
+                    <td class="bold">Turno</td>
+                    <td class="center bold">{{ shift }}</td>
+                </tr>
+                <tr>
+                    <td class="bold">Número de Matrícula</td>
+                    <td class="center bold">{{ enrollment_code }}</td>
+                    <td class="bold">Modalidad de Estudios</td>
+                    <td class="center bold">{{ modality }}</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- TABLE -->
+    <div class="mt14">
+        <table>
+            <colgroup>
+                <col style="width:28px;">
+                <col>
+                <col style="width:105px;">
+                <col style="width:95px;">
+                <col style="width:55px;">
+                <col style="width:60px;">
+            </colgroup>
+            <thead>
+                <tr>
+                    <th>N°</th>
+                    <th>CURSOS</th>
+                    <th>CALIFICACIÓN<br />DEL CURSO</th>
+                    <th>CALIFICACIÓN PARA<br />EL SISTEMA DE EDUCACIÓN SUPERIOR</th>
+                    <th>CRÉDITOS</th>
+                    <th>PUNTAJE</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in rows %}
+                <tr>
+                    <td class="num">{{ r.n }}</td>
+                    <td class="small">{{ r.course_name }}</td>
+                    <td class="centerCell bold">{{ r.status_text }}</td>
+                    <td class="centerCell bold">{{ r.grade }}</td>
+                    <td class="centerCell bold">{{ r.credits }}</td>
+                    <td class="centerCell bold">{{ r.points }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- AVG -->
+    <div class="mt10">
+        <table class="avgRow">
+            <tbody>
+                <tr>
+                    <td class="bold">PROMEDIO PONDERADO DEL PERIODO ACADÉMICO</td>
+                    <td class="center bold" style="width:90px;">{{ weighted_avg }}</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- NOTES -->
+    <div class="noteBox">
+        <div class="mt6">
+            Si el(la) estudiante aprobó más del 75% de créditos, podrá ser promovido al siguiente semestre.
+        </div>
+        <div class="mt6">
+            Para el caso de los estudiantes del segundo al décimo ciclo académico, deben cumplir con los siguientes
+            requisitos:
+            <br />- Haber aprobado el setenta y cinco por ciento (75%) o más de los créditos del segundo al séptimo
+            ciclo para matricularse en el siguiente.
+            <br />- Haber aprobado el cien por ciento (100%) de créditos del octavo o noveno ciclo académicos, para
+            matricularse en el noveno o décimo ciclo, respectivamente.
+        </div>
+    </div>
+
+    <!-- SIGNATURES -->
+    <div class="signRow">
+        <div>
+            <div class="sigLine"></div>
+            <div class="sigLabel">SECRETARIO ACADÉMICO</div>
+        </div>
+        <div>
+            <div class="sigLine"></div>
+            <div class="sigLabel">ESTUDIANTE<br />Firma</div>
+        </div>
+    </div>
+
+    <div class="stampRow">
+        <div>
+            {% if signature_url %}
+            <div class="sigImgBox">
+                <img class="sigImg" src="{{ signature_url }}" alt="firma" />
+            </div>
+            {% else %}
+            <div style="height:55px;"></div>
+            {% endif %}
+        </div>
+        <div></div>
+    </div>
+
+</body>
+
+</html>

@@ -26,6 +26,7 @@ from .models import (
     EvaluationScore,
     AdmissionParam,
     ResultPublication,
+    ApplicationPreference
 )
 
 from .serializers import (
@@ -39,6 +40,10 @@ from .serializers import (
     EvaluationScoreSerializer,
     AdmissionParamSerializer,
 )
+from django.db import transaction
+import secrets, string
+from django.contrib.auth import get_user_model
+User = get_user_model()
 
 # =========================================================
 # Helpers
@@ -795,4 +800,216 @@ def admission_dashboard(request):
         "calls_open": calls_open,
         "by_career": by_career,
         "trend": trend,
+    })
+
+@api_view(["GET"])
+@permission_classes([AllowAny])
+def call_detail_public(request, call_id: int):
+    try:
+        obj = AdmissionCall.objects.annotate(applications_count=models.Count("applications")).get(pk=call_id)
+    except AdmissionCall.DoesNotExist:
+        return Response({"detail": "Not found"}, status=404)
+
+    # opcional: solo permitir ver si está activa (como en list_public)
+    if not _is_active_call(obj):
+        return Response({"detail": "Not found"}, status=404)
+
+    return Response(_call_to_fe(obj))
+
+@api_view(["POST"])
+@permission_classes([AllowAny])
+def public_apply(request):
+    payload = request.data or {}
+
+    call_id = payload.get("call_id") or payload.get("call")
+    prefs = payload.get("career_preferences") or []
+    app_data = payload.get("applicant") or {}
+
+    dni = (app_data.get("dni") or "").strip()
+    names = (app_data.get("names") or "").strip()
+    email = (app_data.get("email") or "").strip().lower()
+    phone = (app_data.get("phone") or "").strip()
+
+    if not call_id:
+        return Response({"detail": "call_id requerido"}, status=400)
+    if not dni or not names or not email:
+        return Response({"detail": "DNI, nombres y email son obligatorios"}, status=400)
+    if not isinstance(prefs, list) or len(prefs) == 0:
+        return Response({"detail": "Seleccione al menos una carrera"}, status=400)
+
+    profile = payload.get("profile") or {}
+    school = payload.get("school") or {}
+    photo_base64 = payload.get("photo_base64")  # opcional
+
+    # ✅ 1ra preferencia = la que consume vacante
+    try:
+        first_pref = int(prefs[0])
+    except Exception:
+        return Response({"detail": "Preferencias inválidas"}, status=400)
+
+    try:
+        with transaction.atomic():
+            # Bloquea convocatoria para evitar doble “última vacante”
+            call = AdmissionCall.objects.select_for_update().annotate(
+                applications_count=models.Count("applications")
+            ).get(pk=call_id)
+
+            if not _is_active_call(call):
+                return Response({"detail": "Convocatoria no está abierta"}, status=400)
+
+            # Busca/crea applicant
+            applicant = Applicant.objects.filter(dni=dni).first() or Applicant.objects.filter(email=email).first()
+            if not applicant:
+                s = ApplicantSerializer(data={"dni": dni, "names": names, "email": email, "phone": phone})
+                s.is_valid(raise_exception=True)
+                applicant = s.save()
+            else:
+                dirty = False
+                if names and applicant.names != names:
+                    applicant.names = names; dirty = True
+                if email and applicant.email != email:
+                    applicant.email = email; dirty = True
+                if phone and applicant.phone != phone:
+                    applicant.phone = phone; dirty = True
+                if dirty:
+                    applicant.save()
+
+            # Evitar duplicado en la misma convocatoria
+            existing = Application.objects.filter(call=call, applicant=applicant).first()
+            if existing:
+                return Response({
+                    "ok": True,
+                    "application_id": existing.id,
+                    "status": existing.status,
+                    "updated_call": _call_to_fe(call),
+                }, status=200)
+
+            # ✅ Validar y descontar vacante (meta.careers si existe; si no, usa Career.vacancies)
+        meta = call.meta or {}
+        meta_careers = meta.get("careers")
+
+        # 1) Si meta_careers existe y tiene data -> descuenta ahí (portal)
+        if isinstance(meta_careers, list) and len(meta_careers) > 0:
+            found = None
+            for it in meta_careers:
+                cid = it.get("career_id") or it.get("id")
+                if cid is not None and int(cid) == first_pref:
+                    found = it
+                    break
+
+            if not found:
+                return Response({"detail": "Carrera no válida en esta convocatoria"}, status=400)
+
+            vac = found.get("vacancies")
+            try:
+                vac = int(vac)
+            except Exception:
+                vac = 0
+
+            if vac <= 0:
+                return Response({"detail": "Ya no hay vacantes disponibles para la carrera seleccionada."}, status=400)
+
+            found["vacancies"] = vac - 1
+
+            meta["careers"] = meta_careers
+            call.meta = meta
+            call.save(update_fields=["meta"])
+
+        else:
+            # 2) Fallback: descuenta en Career.vacancies (si meta está vacío)
+            try:
+                career = Career.objects.select_for_update().get(pk=first_pref)
+            except Career.DoesNotExist:
+                return Response({"detail": "Carrera no encontrada"}, status=400)
+
+            vac = int(career.vacancies or 0)
+            if vac <= 0:
+                return Response({"detail": "Ya no hay vacantes disponibles para la carrera seleccionada."}, status=400)
+
+            career.vacancies = vac - 1
+            career.save(update_fields=["vacancies", "updated_at"])
+
+            # Reflejar en meta para que el portal muestre vacantes
+            meta["careers"] = [{"career_id": career.id, "name": career.name, "vacancies": int(career.vacancies)}]
+            call.meta = meta
+            call.save(update_fields=["meta"])
+
+
+            # Crear Application
+            app = Application.objects.create(
+                call=call,
+                applicant=applicant,
+                status="REGISTERED",
+                career_name="",
+                data={
+                    "source": "PUBLIC",
+                    "profile": profile,
+                    "school": school,
+                    "photo_base64": photo_base64,
+                },
+            )
+
+            # Crear preferencias (orden)
+            careers = Career.objects.filter(id__in=prefs)
+            map_careers = {c.id: c for c in careers}
+
+            rows = []
+            for i, cid in enumerate(prefs, start=1):
+                c = map_careers.get(int(cid))
+                if c:
+                    rows.append(ApplicationPreference(application=app, career=c, rank=i))
+
+            if not rows:
+                app.delete()
+                return Response({"detail": "Carreras inválidas"}, status=400)
+
+            ApplicationPreference.objects.bulk_create(rows)
+
+            first = map_careers.get(first_pref)
+            if first:
+                app.career_name = first.name
+                app.save(update_fields=["career_name"])
+
+            return Response({
+                "ok": True,
+                "application_id": app.id,
+                "status": app.status,
+                "updated_call": _call_to_fe(call),  # ✅ para refrescar UI
+            }, status=201)
+
+    except AdmissionCall.DoesNotExist:
+        return Response({"detail": "Convocatoria no encontrada"}, status=404)
+
+@api_view(["GET"])
+@permission_classes([AllowAny])
+def public_results(request):
+    call_id = request.query_params.get("call_id")
+    dni = (request.query_params.get("dni") or "").strip()
+
+    if not call_id or not dni:
+        return Response({"detail": "call_id y dni requeridos"}, status=400)
+
+    applicant = Applicant.objects.filter(dni=dni).first()
+    if not applicant:
+        return Response({"detail": "No encontrado"}, status=404)
+
+    app = Application.objects.filter(call_id=call_id, applicant=applicant).first()
+    if not app:
+        return Response({"detail": "No encontrado"}, status=404)
+
+    written = EvaluationScore.objects.filter(application=app, phase="WRITTEN").first()
+    interview = EvaluationScore.objects.filter(application=app, phase="INTERVIEW").first()
+
+    prefs = ApplicationPreference.objects.filter(application=app).select_related("career").order_by("rank")
+    pref_names = [{"rank": p.rank, "career": p.career.name} for p in prefs]
+
+    return Response({
+        "call_id": int(call_id),
+        "dni": dni,
+        "names": applicant.names,
+        "status": app.status,
+        "career_preferences": pref_names,
+        "written": {"total": float(written.total) if written else None, "rubric": written.rubric if written else None},
+        "interview": {"total": float(interview.total) if interview else None, "rubric": interview.rubric if interview else None},
+        "final": {"admitted": app.status == "ADMITTED"},
     })

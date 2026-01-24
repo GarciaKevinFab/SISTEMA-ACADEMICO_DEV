@@ -45,6 +45,9 @@ from .serializers import (
     SectionOutSerializer, SectionCreateUpdateSerializer,
     AttendanceSessionSerializer,
 )
+import logging  # Add this at the top if not already present
+
+logger = logging.getLogger(__name__)
 def url_to_data_uri(url: str) -> str:
     if not url:
         return ""
@@ -56,6 +59,125 @@ def url_to_data_uri(url: str) -> str:
         return f"data:{ctype};base64,{b64}"
     except Exception:
         return ""
+
+def _build_reporte_periodo_ctx(request, st: StudentProfile, pq: str) -> tuple[dict, str]:
+    pq = _norm_term(pq)
+
+    # 1) Trae registros del periodo directamente (fuente de verdad)
+    recs = (
+        AcademicGradeRecord.objects
+        .select_related("course")
+        .filter(student=st)
+    )
+    recs = [r for r in recs if _norm_term(getattr(r, "term", "") or "") == pq]
+
+    if not recs:
+        return {}, "No hay registros para el periodo"
+
+    # 2) Elige el "mejor" registro por curso (si hay repetidos)
+    best_by_course = {}
+    for r in recs:
+        cid = r.course_id
+        try:
+            g = None if r.final_grade is None else float(r.final_grade)
+        except Exception:
+            g = None
+
+        prev = best_by_course.get(cid)
+        prev_g = None
+        if prev is not None:
+            try:
+                prev_g = None if prev.final_grade is None else float(prev.final_grade)
+            except Exception:
+                prev_g = None
+
+        if prev is None or ((g is not None) and (prev_g is None or g > prev_g)):
+            best_by_course[cid] = r
+
+    recs = list(best_by_course.values())
+    recs.sort(key=lambda r: (getattr(r.course, "code", "") or "", getattr(r.course, "name", "") or ""))
+
+    # 3) Construye filas + calcula ponderado
+    rows = []
+    sum_points = 0.0
+    sum_credits = 0
+    simple_sum = 0.0
+    simple_count = 0
+
+    for i, r in enumerate(recs, start=1):
+        course = r.course
+        course_name = getattr(course, "name", "") or ""
+
+        grade = _safe_float(getattr(r, "final_grade", None))
+        credits = int(getattr(course, "credits", 0) or 0)  # ✅ créditos reales del curso
+
+        # status (si tu record guarda estado real, úsalo)
+        status_text = ""
+        for k in ("status", "state", "estado", "observacion", "observation"):
+            if hasattr(r, k):
+                status_text = (getattr(r, k) or "").strip().upper()
+                break
+        if status_text not in ("LOGRADO", "EN PROCESO"):
+            status_text = "LOGRADO" if (grade is not None and grade >= 11) else "EN PROCESO"
+
+        points = (grade * credits) if (grade is not None and credits > 0) else 0
+
+        rows.append({
+            "n": i,
+            "course_name": course_name,
+            "status_text": status_text,
+            "grade": _fmt_grade(grade),
+            "credits": credits,
+            "points": _fmt_grade(points),
+        })
+
+        if grade is not None:
+            simple_sum += float(grade)
+            simple_count += 1
+
+        if grade is not None and credits > 0:
+            sum_points += float(points)
+            sum_credits += credits
+
+    # 4) Promedio: ponderado si hay créditos, si no hay créditos => simple (para no dejar vacío)
+    if sum_credits > 0:
+        weighted_avg = round(sum_points / sum_credits, 2)
+    else:
+        weighted_avg = round(simple_sum / simple_count, 2) if simple_count > 0 else ""
+
+    logo_data, sig_data = _get_institution_media_datauris(request)
+
+    institution_name = 'I.E.S.P.P "GUSTAVO ALLENDE LLAVERIA"'
+    try:
+        inst = InstitutionSettings.objects.get(id=1)
+        if (inst.name or "").strip():
+            institution_name = inst.name.strip()
+    except Exception:
+        pass
+
+    ctx = {
+        "institution_name": institution_name,
+        "academic_period": pq.upper(),
+        "program_name": (st.programa_carrera or "EDUCACIÓN INICIAL (RVM N° 163-2019-MINEDU)"),
+        "cycle_section": getattr(st, "ciclo_seccion", "") or 'I - "A"',
+        "student_name": f"{st.apellido_paterno} {st.apellido_materno} {st.nombres}".strip(),
+        "shift": (getattr(st, "turno", "") or "MAÑANA").upper(),
+        "enrollment_code": (getattr(st, "codigo_matricula", "") or st.num_documento or "N/A"),
+        "modality": (getattr(st, "modalidad", "") or "PRESENCIAL").upper(),
+        "rows": rows,
+        "weighted_avg": f"{weighted_avg:.2f}" if weighted_avg != "" else "",
+        "logo_url": logo_data,
+        "signature_url": sig_data,
+    }
+    return ctx, ""
+
+def _render_reporte_periodo_pdf(request, st: StudentProfile, pq: str) -> bytes:
+    ctx, err = _build_reporte_periodo_ctx(request, st, pq)
+    if err:
+        raise ValueError(err)
+    
+    html = render_to_string("kardex/reporte_calificaciones.html", ctx)
+    return html_to_pdf_bytes(html)
 
 def _abs_media_url(request, maybe_url: str) -> str:
     if not maybe_url:
@@ -71,6 +193,46 @@ def _abs_media_url(request, maybe_url: str) -> str:
         return request.build_absolute_uri(u)
     except Exception:
         return u
+def _safe_float(v):
+    try:
+        if v is None:
+            return None
+        s = str(v).strip()
+        if s == "":
+            return None
+        return float(s)
+    except Exception:
+        return None
+
+def _fmt_grade(g):
+    if g is None:
+        return ""
+    try:
+        gf = float(g)
+        if gf.is_integer():
+            return str(int(gf))
+        return f"{gf:.2f}".rstrip("0").rstrip(".")
+    except Exception:
+        return ""
+
+
+def _status_text_from_record(rec):
+    """
+    IMPORTANTE:
+    En tu foto sale 'EN PROCESO' con 14, así que NO es por nota.
+    Si tu modelo guarda estado real (status/estado/observacion), úsalo.
+    Si no existe, cae a regla simple (>=11 LOGRADO).
+    """
+    for k in ("status", "state", "estado", "observacion", "observation"):
+        if hasattr(rec, k):
+            v = (getattr(rec, k) or "").strip().upper()
+            if v in ("LOGRADO", "EN PROCESO"):
+                return v
+
+    g = _safe_float(getattr(rec, "final_grade", None))
+    if g is None:
+        return "EN PROCESO"
+    return "LOGRADO" if g >= 11 else "EN PROCESO"
 
 def _get_institution_media_datauris(request):
     inst, _ = InstitutionSettings.objects.get_or_create(id=1)
@@ -1109,97 +1271,78 @@ class KardexBoletaPeriodoPDFView(APIView):
         if not st:
             return Response({"detail": "Estudiante no encontrado"}, status=404)
 
-        grouped = build_boleta_for_period(st, period_q=period_q)
-        if not grouped:
-            return Response({"detail": f"No hay boleta para el periodo {period_q}."}, status=404)
+        pq = _norm_term(period_q)
 
-        # ✅ Igual que el de AÑO: usar HTML -> PDF
-        mid = (len(grouped) + 1) // 2
-        page1 = grouped[:mid]
-        page2 = grouped[mid:]
-        logo_data, sig_data = _get_institution_media_datauris(request)
-
-        ctx = {
-            "student_name": f"{st.apellido_paterno} {st.apellido_materno} {st.nombres}".strip(),
-            "student_code": st.num_documento,
-            "career_name": (st.programa_carrera or "").upper(),
-
-            "logo_url": logo_data,
-            "signature_url": sig_data,
-
-            "page1": page1,
-            "page2": page2,
-            "period_label": _norm_term(period_q),
-        }
-
-        # ✅ Usa el template que YA tienes (boleta_comunicacion.html)
-        html = render_to_string("kardex/boleta_comunicacion.html", ctx)
-        pdf_bytes = html_to_pdf_bytes(html)
-
-        filename = f"boleta-{student_id}-{_norm_term(period_q)}.pdf"
-        return HttpResponse(
-            pdf_bytes,
-            content_type="application/pdf",
-            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-        )
-
+        try:
+            pdf_bytes = _render_reporte_periodo_pdf(request, st, pq)
+            filename = f"reporte-calificaciones-{student_id}-{pq}.pdf"
+            return HttpResponse(
+                pdf_bytes,
+                content_type="application/pdf",
+                headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+            )
+        except ValueError as ve:
+            # viene de "no hay registros"
+            logger.info("Sin registros PDF periodo student=%s period=%s", student_id, pq)
+            return Response({"detail": "No hay registros", "error": str(ve)}, status=404)
+        except Exception as e:
+            logger.exception("Error PDF periodo student=%s period=%s", student_id, pq)
+            return Response({"detail": "Error interno generando PDF", "error": str(e)}, status=500)
 class KardexBoletaAnioPDFView(APIView):
     authentication_classes = [JWTAuthentication]
     permission_classes = [permissions.IsAuthenticated]
+
     def get(self, request, student_id):
         period_q = (request.query_params.get("period") or "").strip()
         if not period_q:
-            return Response({"detail": "Falta period (ej: 2018-II)"}, status=400)
+            return Response({"detail": "Falta period (ej: 2018-I)"}, status=400)
+
         st = _student_lookup(student_id)
         if not st:
             return Response({"detail": "Estudiante no encontrado"}, status=404)
+
         p = _norm_term(period_q)
         m = re.match(r"^(\d{4})-(I|II|1|2)$", p)
         if not m:
             return Response({"detail": "period inválido (ej: 2018-I / 2018-II)"}, status=400)
+
         year = int(m.group(1))
         periods = [f"{year}-I", f"{year}-II"]
+
         writer = PdfWriter()
         any_pages = False
-        for per in periods:
-            grouped = build_boleta_for_period(st, period_q=per)
-            if not grouped:
-                continue
-            mid = (len(grouped) + 1) // 2
-            page1 = grouped[:mid]
-            page2 = grouped[mid:]
-            logo_data, sig_data = _get_institution_media_datauris(request)
 
-            ctx = {
-                "student_name": f"{st.apellido_paterno} {st.apellido_materno} {st.nombres}".strip(),
-                "student_code": st.num_documento,
-                "career_name": (st.programa_carrera or "").upper(),
+        try:
+            for per in periods:
+                pq = _norm_term(per)
+                ctx, err = _build_reporte_periodo_ctx(request, st, pq)
+                if err:
+                    continue
 
-                "logo_url": logo_data,
-                "signature_url": sig_data,
+                html = render_to_string("kardex/reporte_calificaciones.html", ctx)
+                pdf_bytes = html_to_pdf_bytes(html)
 
-                "page1": page1,
-                "page2": page2,
-                "period_label": per,
-            }
+                reader = PdfReader(BytesIO(pdf_bytes))
+                for pg in reader.pages:
+                    writer.add_page(pg)
+                    any_pages = True
 
-            html = render_to_string("kardex/boleta_comunicacion.html", ctx)
-            pdf_bytes = html_to_pdf_bytes(html)
-            reader = PdfReader(BytesIO(pdf_bytes))
-            for pg in reader.pages:
-                writer.add_page(pg)
-                any_pages = True
-        if not any_pages:
-            return Response({"detail": f"No hay boletas para el año {year}."}, status=404)
-        out = BytesIO()
-        writer.write(out)
-        out.seek(0)
-        filename = f"boleta-{student_id}-{year}-I_{year}-II.pdf"
-        return HttpResponse(
-            out.getvalue(),
-            content_type="application/pdf",
-            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-        )
+            if not any_pages:
+                return Response({"detail": f"No hay reportes para el año {year}."}, status=404)
+
+            out = BytesIO()
+            writer.write(out)
+            out.seek(0)
+
+            filename = f"reporte-calificaciones-{student_id}-{year}.pdf"
+            return HttpResponse(
+                out.getvalue(),
+                content_type="application/pdf",
+                headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+            )
+        except Exception as e:
+            return Response({"detail": "Error interno generando PDF", "error": str(e)}, status=500)
+    
 # ───────────────────── Procesos académicos ─────────────────────
 class ProcessesCreateView(APIView):
     authentication_classes = [JWTAuthentication]

@@ -301,3 +301,16 @@ export const Payments = {
     receiptPdf: async (payment_id) =>
         await api.get(`/admission-payments/${payment_id}/receipt.pdf`, { responseType: "blob" }),
 };
+
+export const AdmissionPublic = {
+    apply: async (payload) => {
+        const { data } = await api.post("/admission/public/apply", payload);
+        return data;
+    },
+    results: async (callId, dni) => {
+        const { data } = await api.get("/admission/public/results", {
+            params: { call_id: callId, dni },
+        });
+        return data;
+    },
+};
