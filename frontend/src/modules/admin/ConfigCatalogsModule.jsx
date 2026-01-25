@@ -1688,56 +1688,102 @@ const InstitutionSection = () => {
 };
 
 // ===============================================================
-// Importadores Excel/CSV (SIN MAPEO)
+// Importadores Excel/CSV (con barra de progreso y advertencia)
 // ===============================================================
+
 const ImportersTab = () => {
     const [type, setType] = useState("students");
     const [file, setFile] = useState(null);
     const [job, setJob] = useState(null);
     const [status, setStatus] = useState(null);
     const [poll, setPoll] = useState(null);
+    const [isImporting, setIsImporting] = useState(false);
 
-    useEffect(() => () => { if (poll) clearInterval(poll); }, [poll]);
+    // Limpieza automática del polling al desmontar
+    useEffect(() => {
+        return () => {
+            if (poll) {
+                clearInterval(poll);
+            }
+        };
+    }, [poll]);
 
     const start = async () => {
-        if (!file) { toast.error("Adjunta un archivo"); return; }
+        if (!file) {
+            toast.error("Debes seleccionar un archivo primero");
+            return;
+        }
+
+        if (isImporting) {
+            toast.info("Ya hay una importación en curso");
+            return;
+        }
+
+        setIsImporting(true);
+        setStatus(null);
+        setJob(null);
+
         try {
-            // 👇 si tu Imports.start acepta 3 params, deja el 3ro undefined o {}
-            const res = await Imports.start(type, file /*, undefined */);
+            const res = await Imports.start(type, file);
+            const jobId = res?.job_id || res?.id || res?.task_id;
 
-            const jobId = res?.job_id || res?.id;
+            if (!jobId) {
+                throw new Error("No se recibió identificador de tarea");
+            }
+
             setJob(jobId);
-            toast.success("Importación encolada");
+            toast.success("Importación iniciada");
 
+            // Polling cada ~1.8 segundos
             const timer = setInterval(async () => {
                 try {
                     const st = await Imports.status(jobId);
                     setStatus(st);
-                    if (st?.state === "COMPLETED" || st?.state === "FAILED") {
+
+                    if (st?.state === "COMPLETED" || st?.state === "FAILED" || st?.state === "ERROR") {
                         clearInterval(timer);
                         setPoll(null);
+                        setIsImporting(false);
+
+                        if (st.state === "COMPLETED") {
+                            toast.success("¡Importación completada con éxito!");
+                        } else {
+                            toast.error("La importación terminó con error");
+                        }
                     }
-                } catch { }
-            }, 1500);
+                } catch (err) {
+                    console.error("Error al consultar estado:", err);
+                    // No detenemos el polling por errores de consulta
+                }
+            }, 1800);
 
             setPoll(timer);
         } catch (e) {
-            toast.error(formatApiError(e));
+            toast.error(formatApiError(e, "No se pudo iniciar la importación"));
+            setIsImporting(false);
         }
+    };
+
+    const cancelPolling = () => {
+        if (poll) {
+            clearInterval(poll);
+            setPoll(null);
+        }
+        setIsImporting(false);
+        setStatus(null);
+        setJob(null);
+        toast.info("Seguimiento de progreso detenido");
     };
 
     const downloadTemplate = async () => {
         try {
             const res = await Imports.downloadTemplate(type);
-
             const cd = res.headers?.["content-disposition"];
             const fallback = `${type}_template.xlsx`;
             const filename = filenameFromContentDisposition(cd, fallback);
-
             const blob = new Blob([res.data], {
                 type: res.headers?.["content-type"] || "application/octet-stream",
             });
-
             saveBlobAsFile(blob, filename);
             toast.success("Plantilla descargada");
         } catch (e) {
@@ -1745,103 +1791,172 @@ const ImportersTab = () => {
         }
     };
 
+    const progress = status?.progress ?? 0;
+    const isProcessing = isImporting || !!job;
+
     return (
         <div className="space-y-6 pb-24 sm:pb-6">
             <Section
                 title={
-                    <>
+                    <div className="flex items-center gap-2">
                         <FileSpreadsheet className="h-5 w-5 text-blue-600" />
-                        Importadores Excel/CSV
-                    </>
+                        <span>Importadores Excel/CSV</span>
+                    </div>
                 }
-                desc="Carga masiva de planes de Estudios, alumnos y notas históricas."
+                desc="Carga masiva de planes de estudios, alumnos, notas históricas y otros catálogos."
             >
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {/* Advertencia visible durante la importación */}
+                {isProcessing && (
+                    <div className="mb-6 p-5 bg-amber-50 border border-amber-300 rounded-2xl shadow-sm">
+                        <div className="flex items-start gap-4">
+                            <AlertCircle className="h-6 w-6 text-amber-600 mt-1 shrink-0" />
+                            <div>
+                                <h3 className="font-semibold text-amber-800 text-base mb-1">
+                                    No cambie de pestaña ni cierre esta ventana
+                                </h3>
+                                <p className="text-sm text-amber-700">
+                                    La importación está en proceso. Cambiar de sección o cerrar la página
+                                    impedirá que vea el progreso y el resultado final en tiempo real.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
                     <Field label="Tipo de importación">
-                        <Select value={type} onValueChange={setType}>
-                            <SelectTrigger><SelectValue /></SelectTrigger>
+                        <Select
+                            value={type}
+                            onValueChange={setType}
+                            disabled={isProcessing}
+                        >
+                            <SelectTrigger className="rounded-xl">
+                                <SelectValue placeholder="Seleccione tipo" />
+                            </SelectTrigger>
                             <SelectContent>
                                 <SelectItem value="plans">Plan de estudios</SelectItem>
                                 <SelectItem value="students">Alumnos</SelectItem>
                                 <SelectItem value="grades">Notas históricas</SelectItem>
+                                {/* Puedes agregar más tipos si tu backend los soporta */}
                             </SelectContent>
                         </Select>
                     </Field>
 
-                    <Field label="Plantilla (descargar)">
+                    <Field label="Descargar plantilla">
                         <Button
-                            type="button"
                             variant="outline"
-                            className="rounded-xl inline-flex items-center gap-2"
+                            className="w-full sm:w-auto rounded-xl border-slate-300 hover:bg-slate-50"
                             onClick={downloadTemplate}
+                            disabled={isProcessing}
                         >
-                            <Download className="h-4 w-4" />
+                            <Download className="h-4 w-4 mr-2" />
                             Descargar plantilla
                         </Button>
                     </Field>
 
-                    <Field label="Archivo Excel/CSV">
-                        <Input
-                            type="file"
-                            accept=".xlsx,.xls,.csv"
-                            onChange={(e) => setFile(e.target.files?.[0] || null)}
-                        />
-                        {file && (
-                            <div className="text-xs text-gray-500 mt-1">
-                                {file.name} · {(file.size / 1024).toFixed(1)} KB
-                            </div>
-                        )}
+                    <Field label="Archivo a importar">
+                        <div className="space-y-2">
+                            <Input
+                                type="file"
+                                accept=".xlsx,.xls,.csv"
+                                onChange={(e) => setFile(e.target.files?.[0] || null)}
+                                disabled={isProcessing}
+                                className="rounded-xl"
+                            />
+                            {file && !isProcessing && (
+                                <p className="text-xs text-slate-500">
+                                    {file.name} · {(file.size / 1024 / 1024).toFixed(2)} MB
+                                </p>
+                            )}
+                        </div>
                     </Field>
                 </div>
 
-                <div className="flex justify-end gap-2 mt-4">
-                    <Button
-                        variant="outline"
-                        className="rounded-xl"
-                        onClick={() => {
-                            setFile(null);
-                            setStatus(null);
-                            setJob(null);
-                        }}
-                    >
-                        Limpiar
-                    </Button>
+                <div className="flex flex-col sm:flex-row justify-end gap-3 mt-6">
+                    {isProcessing && (
+                        <Button
+                            variant="outline"
+                            className="rounded-xl border-red-200 text-red-700 hover:bg-red-50 hover:text-red-800"
+                            onClick={cancelPolling}
+                        >
+                            Detener seguimiento
+                        </Button>
+                    )}
 
-                    <Button onClick={start} className="rounded-xl">
-                        <UploadCloud className="h-4 w-4 mr-2" />
-                        Iniciar importación
+                    <Button
+                        onClick={start}
+                        disabled={isProcessing || !file}
+                        className="min-w-[200px] rounded-xl bg-blue-600 hover:bg-blue-700 shadow-md transition-all"
+                    >
+                        {isProcessing ? (
+                            <>
+                                <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                                Procesando...
+                            </>
+                        ) : (
+                            <>
+                                <UploadCloud className="h-4 w-4 mr-2" />
+                                Iniciar importación
+                            </>
+                        )}
                     </Button>
                 </div>
 
-                {(job || status) && (
-                    <Card className="mt-6 rounded-2xl">
-                        <CardHeader>
-                            <CardTitle className="text-base">Estado del proceso</CardTitle>
+                {/* Barra de progreso y estado detallado */}
+                {isProcessing && (
+                    <Card className="mt-8 rounded-2xl border-blue-100 shadow-sm overflow-hidden">
+                        <CardHeader className="bg-blue-50/50 pb-3">
+                            <CardTitle className="text-base flex items-center justify-between">
+                                <span>Progreso de la importación</span>
+                                <Badge
+                                    variant="outline"
+                                    className={
+                                        status?.state === "COMPLETED" ? "bg-green-100 text-green-700" :
+                                            status?.state === "FAILED" || status?.state === "ERROR" ? "bg-red-100 text-red-700" :
+                                                "bg-blue-100 text-blue-700"
+                                    }
+                                >
+                                    {status?.state || "EN PROCESO"}
+                                </Badge>
+                            </CardTitle>
                         </CardHeader>
-                        <CardContent className="text-sm">
-                            <div className="flex items-center gap-2">
-                                {status?.state === "COMPLETED" ? (
-                                    <CheckCircle className="h-5 w-5 text-green-600" />
-                                ) : status?.state === "FAILED" ? (
-                                    <XCircle className="h-5 w-5 text-red-600" />
-                                ) : (
-                                    <RefreshCw className="h-5 w-5 text-blue-600 animate-spin" />
-                                )}
-
-                                <div>
-                                    <div><strong>Job:</strong> {job || "-"}</div>
-                                    <div><strong>Estado:</strong> {status?.state || "EN COLA"}</div>
-                                    {status?.progress != null && <div><strong>Progreso:</strong> {Math.round(status.progress)}%</div>}
-                                    {Array.isArray(status?.errors) && status.errors.length > 0 && (
-                                        <div className="mt-2">
-                                            <strong>Errores:</strong>
-                                            <ul className="list-disc ml-5">
-                                                {status.errors.map((e, i) => <li key={i}>{e}</li>)}
-                                            </ul>
-                                        </div>
-                                    )}
+                        <CardContent className="pt-5 space-y-5">
+                            <div>
+                                <div className="flex justify-between text-sm mb-1.5">
+                                    <span className="font-medium">Progreso</span>
+                                    <span>{Math.round(progress)}%</span>
+                                </div>
+                                <div className="h-3 bg-slate-100 rounded-full overflow-hidden">
+                                    <div
+                                        className="h-full bg-gradient-to-r from-blue-500 to-blue-600 rounded-full transition-all duration-700 ease-out"
+                                        style={{ width: `${progress}%` }}
+                                    />
+                                </div>
+                                <div className="flex justify-between text-xs text-slate-500 mt-1.5">
+                                    <span>Job ID: {job || "—"}</span>
+                                    <span>{status?.processed || 0} / {status?.total || "?"} registros</span>
                                 </div>
                             </div>
+
+                            {status?.message && (
+                                <p className="text-sm text-slate-600 bg-slate-50 p-3 rounded-lg border border-slate-100">
+                                    {status.message}
+                                </p>
+                            )}
+
+                            {Array.isArray(status?.errors) && status.errors.length > 0 && (
+                                <div className="p-4 bg-red-50 border border-red-100 rounded-lg text-sm text-red-800">
+                                    <p className="font-medium mb-2 flex items-center gap-2">
+                                        <AlertCircle className="h-4 w-4" />
+                                        Errores encontrados:
+                                    </p>
+                                    <ul className="list-disc pl-5 space-y-1 max-h-48 overflow-y-auto">
+                                        {status.errors.map((err, index) => (
+                                            <li key={index}>{err}</li>
+                                        ))}
+                                    </ul>
+                                </div>
+                            )}
                         </CardContent>
                     </Card>
                 )}

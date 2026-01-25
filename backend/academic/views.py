@@ -241,6 +241,32 @@ def _get_institution_media_datauris(request):
     return url_to_data_uri(logo_abs), url_to_data_uri(sig_abs)
 
 # ───────────────────────── Helpers ─────────────────────────
+def _to_int(value, default=None):
+    """Convierte a entero de forma segura"""
+    if value is None:
+        return default
+    try:
+        return int(float(value))   # acepta "5.0" → 5
+    except (ValueError, TypeError):
+        return default
+
+
+def _to_float(value, default=None):
+    """Convierte a float de forma segura (útil para promedios)"""
+    if value is None:
+        return default
+    try:
+        return float(value)
+    except (ValueError, TypeError):
+        return default
+
+
+def _to_str(value, default=""):
+    """Convierte a string limpio"""
+    if value is None:
+        return default
+    return str(value).strip()
+
 def ok(data=None, **extra):
     if data is None:
         data = {}
@@ -1551,64 +1577,104 @@ class SectionStudentsView(APIView):
             })
         return ok(students=students)
 class SectionGradesView(APIView):
+    """
+    Devuelve las calificaciones del acta + si está submitted
+    """
     authentication_classes = [JWTAuthentication]
     permission_classes = [permissions.IsAuthenticated]
+
     def get(self, request, section_id: int):
         sec = get_object_or_404(Section, id=section_id)
         bundle, _ = SectionGrades.objects.get_or_create(section=sec)
-        return ok(grades=bundle.grades, submitted=bundle.submitted)
+        return ok(
+            grades=(bundle.grades or {}),
+            submitted=bool(bundle.submitted)
+        )
 class GradesSaveView(APIView):
     authentication_classes = [JWTAuthentication]
     permission_classes = [permissions.IsAuthenticated]
+
     def post(self, request):
         body = request.data or {}
         section_id = body.get("section_id")
         grades = body.get("grades") or {}
+
         if not section_id:
-            return Response({"detail": "section_id requerido"}, status=400)
-        if not isinstance(grades, dict):
-            return Response({"detail": "grades debe ser objeto"}, status=400)
+            return Response({"detail": "section_id es requerido"}, status=400)
+
         sec = get_object_or_404(Section, id=int(section_id))
         bundle, _ = SectionGrades.objects.get_or_create(section=sec)
+
         if bundle.submitted:
-            return Response({"detail": "Las calificaciones ya están cerradas."}, status=409)
-        bundle.grades = grades
+            return Response({"detail": "El acta ya está cerrada. No se puede modificar."}, status=409)
+
+        normalized, errors_by_student = _normalize_acta_grades_payload(grades)
+
+        if errors_by_student:
+            return Response(
+                {"detail": "Errores de validación en el acta", "errors": errors_by_student},
+                status=400
+            )
+
+        bundle.grades = normalized
         bundle.save()
-        return ok(success=True)
+        return ok(success=True, message="Acta guardada correctamente (borrador)")
+
 class GradesSubmitView(APIView):
     authentication_classes = [JWTAuthentication]
     permission_classes = [permissions.IsAuthenticated]
+
     def post(self, request):
         body = request.data or {}
         section_id = body.get("section_id")
         grades = body.get("grades") or {}
+
         if not section_id:
-            return Response({"detail": "section_id requerido"}, status=400)
-        if not isinstance(grades, dict):
-            return Response({"detail": "grades debe ser objeto"}, status=400)
+            return Response({"detail": "section_id es requerido"}, status=400)
+
         sec = get_object_or_404(Section, id=int(section_id))
         bundle, _ = SectionGrades.objects.get_or_create(section=sec)
-        bundle.grades = grades
+
+        normalized, errors_by_student = _normalize_acta_grades_payload(grades)
+
+        if errors_by_student:
+            return Response(
+                {"detail": "No se puede cerrar el acta: hay errores", "errors": errors_by_student},
+                status=400
+            )
+
+        bundle.grades = normalized
         bundle.submitted = True
         bundle.submitted_at = timezone.now()
         bundle.save()
-        return ok(success=True, submitted=True)
+
+        return ok(success=True, submitted=True, message="Acta enviada y cerrada correctamente")
+
 class GradesReopenView(APIView):
+    """
+    Reabre el acta (solo roles autorizados)
+    """
     authentication_classes = [JWTAuthentication]
     permission_classes = [permissions.IsAuthenticated]
+
     def post(self, request):
         if not user_has_any_role(request.user, ["REGISTRAR", "ADMIN_ACADEMIC"]):
-            return Response({"detail": "No autorizado"}, status=403)
+            return Response({"detail": "No autorizado para reabrir actas"}, status=403)
+
         body = request.data or {}
         section_id = body.get("section_id")
+
         if not section_id:
             return Response({"detail": "section_id requerido"}, status=400)
+
         sec = get_object_or_404(Section, id=int(section_id))
         bundle, _ = SectionGrades.objects.get_or_create(section=sec)
+
         bundle.submitted = False
         bundle.submitted_at = None
         bundle.save()
-        return ok(success=True, submitted=False)
+
+        return ok(success=True, submitted=False, message="Acta reabierta")
 class SectionActaView(APIView):
     authentication_classes = [JWTAuthentication]
     permission_classes = [permissions.IsAuthenticated]
@@ -1896,3 +1962,154 @@ class CoursesListView(APIView):
 
         items = list(qs.values("id", "code", "name", "credits")[:1000])
         return Response({"items": items})
+    
+ACTA_LEVELS = {"PI", "I", "P", "L", "D"}
+LEVEL_TO_NUM = {"PI": 1, "I": 2, "P": 3, "L": 4, "D": 5}
+
+def _calc_promedio_final(final_grade):
+    """PROMEDIO_FINAL = redondeo entero de FINAL (como backend debe ser)"""
+    if final_grade is None:
+        return None
+    try:
+        return int(round(float(final_grade)))
+    except Exception:
+        return None
+
+def _calc_escala_0_5(c1, c2, c3):
+    # promedio(C1,C2,C3) con 1 decimal, escala 1..5
+    vals = [c1, c2, c3]
+    if not all(isinstance(x, int) and 1 <= x <= 5 for x in vals):
+        return None
+    return round((c1 + c2 + c3) / 3.0, 1)  # ej: 4.0
+
+def _calc_promedio_final_0_20(escala_0_5):
+    # fórmula que calza EXACTO con tu imagen: 4.0 -> 15
+    if escala_0_5 is None:
+        return None
+    return int(round(((float(escala_0_5) - 1.0) / 4.0) * 20.0))
+
+def _calc_estado(prom_final):
+    if prom_final is None:
+        return ""
+    return "Logrado" if int(prom_final) >= 11 else "En proceso"
+
+def _validate_acta_student_payload(payload: dict) -> tuple[bool, list[str]]:
+    """
+    Valida un estudiante individual (mismo criterio que frontend + más estricto)
+    Retorna: (es_valido, lista_de_errores)
+    """
+    errors = []
+
+    if not isinstance(payload, dict):
+        return False, ["El payload del estudiante no es un objeto"]
+
+    # 1. Campos requeridos
+    for field in ACTA_REQUIRED_FIELDS:
+        val = payload.get(field)
+        if val is None or _to_str(val) == "":
+            errors.append(f"{field} es obligatorio")
+
+    # 2. Niveles válidos (solo si se envían)
+    for level_field in ("C1_LEVEL", "C2_LEVEL", "C3_LEVEL"):
+        lv = _to_str(payload.get(level_field))
+        if lv and lv not in ACTA_LEVELS:
+            errors.append(f"{level_field} inválido: '{lv}' (debe ser PI, I, P, L o D)")
+
+    # 3. FINAL: obligatorio y rango 0–20
+    final_val = _to_float(payload.get("FINAL"))
+    if final_val is None:
+        errors.append("FINAL debe ser un número válido")
+    else:
+        if final_val < 0 or final_val > 20:
+            errors.append(f"FINAL fuera de rango (0–20): {final_val}")
+
+    # Puedes agregar más reglas si quieres (ej: C1,C2,C3 entre 0-20 también)
+    # for c in ("C1", "C2", "C3"):
+    #     cv = _to_float(payload.get(c))
+    #     if cv is not None and (cv < 0 or cv > 20):
+    #         errors.append(f"{c} fuera de rango (0–20)")
+
+    return (len(errors) == 0), errors
+
+def _normalize_acta_student_payload(payload: dict):
+    """
+    Acepta por estudiante:
+      C1_LEVEL, C2_LEVEL, C3_LEVEL (PI/I/P/L/D)
+      C1_REC, C2_REC, C3_REC (opcionales)
+      C1, C2, C3 (opcionales) pero si faltan se derivan del LEVEL
+
+    Devuelve:
+      payload normalizado + ESCALA_0_5, PROMEDIO_FINAL, ESTADO
+    """
+    if not isinstance(payload, dict):
+        return None, ["Payload no es objeto"]
+
+    errors = []
+    out = dict(payload)
+
+    # Normaliza niveles
+    for lf in ("C1_LEVEL", "C2_LEVEL", "C3_LEVEL"):
+        lv = _to_str(payload.get(lf)).upper()
+        if not lv:
+            errors.append(f"{lf} es obligatorio")
+        elif lv not in ACTA_LEVELS:
+            errors.append(f"{lf} inválido: {lv}")
+        out[lf] = lv
+
+    # Comentarios: opcional
+    out["C1_REC"] = _to_str(payload.get("C1_REC"))
+    out["C2_REC"] = _to_str(payload.get("C2_REC"))
+    out["C3_REC"] = _to_str(payload.get("C3_REC"))
+
+    # C1/C2/C3: 1..5 (si no vienen, se derivan del nivel)
+    for i in (1, 2, 3):
+        c_key = f"C{i}"
+        lv_key = f"C{i}_LEVEL"
+
+        c_val = _to_int(payload.get(c_key))
+        if c_val is None:
+            lv = out.get(lv_key)
+            c_val = LEVEL_TO_NUM.get(lv)
+
+        if c_val is None:
+            errors.append(f"{c_key} es obligatorio (1-5) o derivable de {lv_key}")
+        elif not (1 <= int(c_val) <= 5):
+            errors.append(f"{c_key} fuera de rango (1-5): {c_val}")
+
+        out[c_key] = int(c_val) if c_val is not None else ""
+
+    if errors:
+        return None, errors
+
+    # Cálculos
+    escala = _calc_escala_0_5(out["C1"], out["C2"], out["C3"])        # 4.0
+    prom_final = _calc_promedio_final_0_20(escala)                    # 15
+    estado = _calc_estado(prom_final)                                 # Logrado
+
+    out["ESCALA_0_5"] = escala
+    out["PROMEDIO_FINAL"] = prom_final
+    out["ESTADO"] = estado
+
+    return out, []
+
+
+def _normalize_acta_grades_payload(grades: dict):
+    """
+    grades: { studentId: payload }
+    Retorna: (normalized, errors_by_student)
+    """
+    normalized = {}
+    errors_by_student = {}
+
+    if not isinstance(grades, dict):
+        return {}, {"_global": ["grades debe ser objeto {studentId: {...}}"]}
+
+    for student_id, payload in grades.items():
+        sid = str(student_id)
+        out, errs = _normalize_acta_student_payload(payload)
+        if errs:
+            errors_by_student[sid] = errs
+        else:
+            normalized[sid] = out
+
+    return normalized, errors_by_student

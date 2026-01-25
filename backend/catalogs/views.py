@@ -71,21 +71,28 @@ def _norm(s):
     s = re.sub(r"\s+", " ", s)
     return s
 
-def _to_int(v, default=None):
+def _to_int(v):
     try:
-        if v == "" or v is None:
-            return default
-        return int(float(v))
+        if v is None:
+            return None
+        s = str(v).strip()
+        if s == "":
+            return None
+        return int(float(s))
     except Exception:
-        return default
+        return None
 
-def _to_float(v, default=None):
+def _to_float(v):
+    """Convierte a float seguro, acepta coma como decimal"""
     try:
-        if v == "" or v is None:
-            return default
-        return float(v)
+        if v is None:
+            return None
+        s = str(v).strip().replace(",", ".")
+        if s == "":
+            return None
+        return float(s)
     except Exception:
-        return default
+        return None
 
 def _parse_date_yyyy_mm_dd(s):
     s = (s or "").strip()
