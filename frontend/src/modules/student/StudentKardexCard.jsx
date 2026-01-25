@@ -412,26 +412,43 @@ export default function StudentKardexCard({
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y">
-                                                {filtered.map((r, idx) => {
-                                                    const status = getStatus(r);
-                                                    return (
-                                                        <tr
-                                                            key={
-                                                                r.id ||
-                                                                r._id ||
-                                                                `${getCycleKey(r)}-${getCourseCode(r)}-${idx}`
-                                                            }
-                                                        >
-                                                            <td className="p-2">{getCourseName(r)}</td>
-                                                            <td className="p-2">{getCourseCode(r)}</td>
-                                                            <td className="p-2">{getCredits(r)}</td>
-                                                            <td className="p-2 font-semibold">{getGrade(r)}</td>
-                                                            <td className="p-2">
-                                                                <Badge variant={statusBadgeVariant(status)}>{status}</Badge>
-                                                            </td>
-                                                        </tr>
-                                                    );
-                                                })}
+   {filtered.map((r, idx) => {
+    const status = getStatus(r);
+    
+    // --- LÓGICA CORREGIDA ---
+    const s = String(status || "").toUpperCase();
+    let badgeColors = "bg-gray-500 text-white border-transparent";
+
+    // 1. Preguntamos PRIMERO por Desaprobado (para que no se confunda)
+    if (s.includes("DESAP")) {
+        badgeColors = "bg-red-600 hover:bg-red-700 text-white border-transparent";
+    } 
+    // 2. LUEGO preguntamos por Aprobado
+    else if (s.includes("APROB")) {
+        badgeColors = "bg-blue-600 hover:bg-blue-700 text-white border-transparent";
+    }
+    // ------------------------
+
+    return (
+        <tr
+            key={
+                r.id ||
+                r._id ||
+                `${getCycleKey(r)}-${getCourseCode(r)}-${idx}`
+            }
+        >
+            <td className="p-2">{getCourseName(r)}</td>
+            <td className="p-2">{getCourseCode(r)}</td>
+            <td className="p-2">{getCredits(r)}</td>
+            <td className="p-2 font-semibold">{getGrade(r)}</td>
+            <td className="p-2">
+                <Badge variant="outline" className={`${badgeColors} font-semibold`}>
+                    {status}
+                </Badge>
+            </td>
+        </tr>
+    );
+})}
 
                                                 {filtered.length === 0 ? (
                                                     <tr>

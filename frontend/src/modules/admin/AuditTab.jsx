@@ -125,16 +125,17 @@ const AuditTab = () => {
         {/* Toolbar de filtros (Adaptado para móvil) */}
         <div className="rounded-2xl p-3 border border-white/50 dark:border-white/10 bg-gradient-to-r from-slate-100 to-white dark:from-neutral-800 dark:to-neutral-900">
           <div className="flex flex-col gap-2">
-            {/* Buscador principal */}
-            <div className="relative w-full">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 opacity-60" />
-              <Input
-                value={filters.q}
-                onChange={(e) => setFilters((s) => ({ ...s, q: e.target.value }))}
-                placeholder="Buscar..."
-                className="pl-9 rounded-xl w-full"
-              />
-            </div>
+           {/* Buscador principal */}
+<div className="relative w-full">
+  {/* ✅ Se eliminó el componente Search que estaba aquí */}
+  <Input
+    value={filters.q}
+    onChange={(e) => setFilters((s) => ({ ...s, q: e.target.value }))}
+    placeholder="Buscar..."
+    // ✅ Cambiamos "pl-9" (padding left) a "pl-3" para que el texto empiece desde el inicio
+    className="pl-3 rounded-xl w-full"
+  />
+</div>
             
             {/* Filtros secundarios en grid para que no se rompan */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
@@ -143,17 +144,28 @@ const AuditTab = () => {
                 <Input value={filters.entity} onChange={(e) => setFilters((s) => ({ ...s, entity: e.target.value }))} placeholder="Entidad" className="rounded-xl" />
             </div>
 
-            {/* Fechas y Botones */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-                <div className="relative">
-                   <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 opacity-60" />
-                   <Input type="datetime-local" value={filters.from} onChange={(e) => setFilters((s) => ({ ...s, from: e.target.value }))} className="pl-9 rounded-xl w-full" />
-                </div>
-                <div className="relative">
-                   <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 opacity-60" />
-                   <Input type="datetime-local" value={filters.to} onChange={(e) => setFilters((s) => ({ ...s, to: e.target.value }))} className="pl-9 rounded-xl w-full" />
-                </div>
-
+           {/* Fechas y Botones */}
+<div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+    <div className="relative">
+        {/* ✅ Se eliminó el componente Calendar que estorbaba a la izquierda */}
+        <Input 
+            type="datetime-local" 
+            value={filters.from} 
+            onChange={(e) => setFilters((s) => ({ ...s, from: e.target.value }))} 
+            // ✅ Cambiamos "pl-9" a "pl-3" para que el texto no tenga ese hueco feo
+            className="pl-3 rounded-xl w-full" 
+        />
+    </div>
+    <div className="relative">
+        {/* ✅ Se eliminó el componente Calendar que estorbaba a la izquierda */}
+        <Input 
+            type="datetime-local" 
+            value={filters.to} 
+            onChange={(e) => setFilters((s) => ({ ...s, to: e.target.value }))} 
+            // ✅ Cambiamos "pl-9" a "pl-3"
+            className="pl-3 rounded-xl w-full" 
+        />
+    </div>
                 <div className="flex items-center gap-2 justify-end">
                     <Button variant="outline" onClick={() => fetchData()} className="rounded-xl gap-2 h-10 w-full sm:w-auto">
                         <RefreshCw className="h-4 w-4" /> <span className="sm:hidden lg:inline">Buscar</span>

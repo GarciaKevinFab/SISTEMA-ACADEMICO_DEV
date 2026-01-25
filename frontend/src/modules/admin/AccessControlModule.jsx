@@ -550,41 +550,48 @@ const UsersTab = () => {
         </div>
       </CardHeader>
 
-      <CardContent className="space-y-4">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center rounded-xl p-2 bg-gradient-to-r from-slate-100 to-white dark:from-neutral-800 dark:to-neutral-900 border border-white/50 dark:border-white/10">
-          <DebouncedSearch
-            value={q}
-            onChange={setQ}
-            placeholder="Buscar por nombre, usuario o email"
-          />
+     <CardContent className="space-y-4">
+  <div className="flex flex-col gap-2 sm:flex-row sm:items-center rounded-xl p-2 bg-gradient-to-r from-slate-100 to-white dark:from-neutral-800 dark:to-neutral-900 border border-white/50 dark:border-white/10">
+    
+    {/* Contenedor con una clase especial para "matar" la lupa */}
+    <div className="flex-1 [&_svg]:hidden [&_i]:hidden [&_.lucide]:hidden">
+      <DebouncedSearch
+        value={q}
+        onChange={setQ}
+        placeholder="Buscar por nombre, usuario o email"
+        // Forzamos que el texto empiece desde la izquierda (sin hueco de lupa)
+        className="[&_input]:pl-3 !pl-0" 
+      />
+    </div>
 
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              onClick={() => {
-                setPage(1);
-                fetchUsers();
-              }}
-              className="gap-2 rounded-xl"
-            >
-              <RefreshCw className="h-4 w-4" /> Buscar
-            </Button>
+    <div className="flex items-center gap-2">
+      <Button
+        variant="outline"
+        onClick={() => {
+          setPage(1);
+          fetchUsers();
+        }}
+        className="gap-2 rounded-xl"
+      >
+        <RefreshCw className="h-4 w-4" /> Buscar
+      </Button>
 
-            <Dialog open={openCreate} onOpenChange={setOpenCreate}>
-              <DialogTrigger asChild>
-                <Button className="rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 gap-2">
-                  <Plus className="h-4 w-4" /> Nuevo Usuario
-                </Button>
-              </DialogTrigger>
+      <Dialog open={openCreate} onOpenChange={setOpenCreate}>
+        <DialogTrigger asChild>
+          <Button className="rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 gap-2">
+            <Plus className="h-4 w-4" /> Nuevo Usuario
+          </Button>
+        </DialogTrigger>
 
-              <DialogContent
-                className="
-                  w-[calc(100vw-1.5rem)] sm:w-full sm:max-w-xl
-                  h-[90vh] overflow-hidden p-0
-                  backdrop-blur-md bg-white/85 dark:bg-neutral-900/85
-                  border border-white/50 dark:border-white/10 rounded-2xl
-                  flex flex-col
-                "
+        <DialogContent
+          className="
+            w-[calc(100vw-1.5rem)] sm:w-full sm:max-w-xl
+            h-[90vh] overflow-hidden p-0
+            backdrop-blur-md bg-white/85 dark:bg-neutral-900/85
+            border border-white/50 dark:border-white/10 rounded-2xl
+            flex flex-col
+          "
+        
               >
                 {/* HEADER fijo */}
                 <div className="px-6 pt-5 pb-3 border-b flex-none">

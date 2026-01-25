@@ -687,45 +687,63 @@ export default function GradesAttendanceComponent() {
                 />
 
                 {/* Sesión actual */}
-                {currentSession && (
-                  <div className="border rounded p-3 space-y-3">
-                    <div className="font-medium">Tomando asistencia — {currentSession.date}</div>
+{currentSession && (
+  <div className="border rounded p-3 space-y-3">
+    <div className="font-medium">Tomando asistencia — {currentSession.date}</div>
 
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-sm">
-                        <thead className="bg-gray-50">
-                          <tr>
-                            <th className="p-2 text-left">Estudiante</th>
-                            <th className="p-2 text-left">Estado</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {pagedStudentsForAttendance.map((st) => {
-                            const row = sessionRows.find((r) => r.student_id === st.id) || { status: "PRESENT" };
-                            return (
-                              <tr key={st.id} className="border-t">
-                                <td className="p-2">
-                                  {st.first_name} {st.last_name}
-                                </td>
-                                <td className="p-2">
-                                  <Select value={row.status} onValueChange={(v) => setRowStatus(st.id, v)}>
-                                    <SelectTrigger className="w-40">
-                                      <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      <SelectItem value="PRESENT">Presente</SelectItem>
-                                      <SelectItem value="ABSENT">Ausente</SelectItem>
-                                      <SelectItem value="LATE">Tardanza</SelectItem>
-                                      <SelectItem value="EXCUSED">Justificado</SelectItem>
-                                    </SelectContent>
-                                  </Select>
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead className="bg-gray-50">
+          <tr>
+            <th className="p-2 text-left">Estudiante</th>
+            <th className="p-2 text-left">Estado</th>
+          </tr>
+        </thead>
+        <tbody>
+          {pagedStudentsForAttendance.map((st) => {
+            const row = sessionRows.find((r) => r.student_id === st.id) || { status: "PRESENT" };
+
+            // --- LÓGICA DE COLORES SÓLIDOS (IMPORTANT) ---
+            let colorClass = "";
+            if (row.status === "PRESENT") {
+              // AZUL
+              colorClass = "!bg-blue-600 !text-white !border-blue-700";
+            } else if (row.status === "ABSENT") {
+              // ROJO
+              colorClass = "!bg-red-600 !text-white !border-red-700";
+            } else if (row.status === "LATE" || row.status === "EXCUSED") {
+              // AMARILLO / ÁMBAR
+              colorClass = "!bg-amber-500 !text-white !border-amber-600";
+            }
+            // ---------------------------------------------
+
+            return (
+              <tr key={st.id} className="border-t">
+                <td className="p-2">
+                  {st.first_name} {st.last_name}
+                </td>
+                <td className="p-2">
+                  <Select value={row.status} onValueChange={(v) => setRowStatus(st.id, v)}>
+                    {/* Aplicamos la clase con '!' para pintar toda la caja */}
+                    <SelectTrigger className={`w-40 font-medium transition-colors ${colorClass}`}>
+                      <SelectValue />
+                    </SelectTrigger>
+                    
+                    <SelectContent>
+                      <SelectItem value="PRESENT">Presente</SelectItem>
+                      <SelectItem value="ABSENT">Ausente</SelectItem>
+                      <SelectItem value="LATE">Tardanza</SelectItem>
+                      <SelectItem value="EXCUSED">Justificado</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+
 
                     {/* ✅ Paginación tomando asistencia */}
                     <Pagination
@@ -1029,41 +1047,57 @@ export default function GradesAttendanceComponent() {
                             <th className="p-2 text-left">Estado</th>
                           </tr>
                         </thead>
-                        <tbody>
-                          {pagedStudentsForAttendance.map((st) => {
-                            const row =
-                              sessionRows.find((r) => r.student_id === st.id) || { status: "PRESENT" };
+                      <tbody className="divide-y">
+  {pagedStudentsForAttendance.map((st) => {
+    // 1. Buscamos la fila o asignamos default
+    const row = sessionRows.find((r) => r.student_id === st.id) || { status: "PRESENT" };
 
-                            return (
-                              <tr key={st.id} className="border-t">
-                                <td className="p-2">
-                                  {st.first_name} {st.last_name}
-                                </td>
-                                <td className="p-2">
-                                  <Select value={row.status} onValueChange={(v) => setRowStatus(st.id, v)}>
-                                    <SelectTrigger className="w-44">
-                                      <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      <SelectItem value="PRESENT">Presente</SelectItem>
-                                      <SelectItem value="ABSENT">Ausente</SelectItem>
-                                      <SelectItem value="LATE">Tardanza</SelectItem>
-                                      <SelectItem value="EXCUSED">Justificado</SelectItem>
-                                    </SelectContent>
-                                  </Select>
-                                </td>
-                              </tr>
-                            );
-                          })}
+    // 2. Lógica de COLORES FORZADOS (Usamos '!' para obligar el cambio)
+    let colorClass = "bg-white text-gray-900 border-gray-300";
 
-                          {students.length === 0 ? (
-                            <tr>
-                              <td colSpan={2} className="p-3 text-center text-gray-500">
-                                Sin estudiantes
-                              </td>
-                            </tr>
-                          ) : null}
-                        </tbody>
+    if (row.status === "PRESENT") {
+      // AZUL FORZADO
+      colorClass = "!bg-blue-600 !text-white !border-blue-600 hover:!bg-blue-700";
+    } else if (row.status === "ABSENT") {
+      // ROJO FORZADO
+      colorClass = "!bg-red-600 !text-white !border-red-600 hover:!bg-red-700";
+    } else if (row.status === "LATE" || row.status === "EXCUSED") {
+      // AMARILLO FORZADO
+      colorClass = "!bg-amber-500 !text-white !border-amber-500 hover:!bg-amber-600";
+    }
+
+    return (
+      <tr key={st.id} className="border-t">
+        <td className="p-2">
+          {st.first_name} {st.last_name}
+        </td>
+        <td className="p-2">
+          <Select value={row.status} onValueChange={(v) => setRowStatus(st.id, v)}>
+            {/* 3. APLICAMOS LA CLASE CON '!' */}
+            <SelectTrigger className={`w-44 font-medium transition-colors ${colorClass}`}>
+              <SelectValue />
+            </SelectTrigger>
+            
+            <SelectContent>
+              <SelectItem value="PRESENT">Presente</SelectItem>
+              <SelectItem value="ABSENT">Ausente</SelectItem>
+              <SelectItem value="LATE">Tardanza</SelectItem>
+              <SelectItem value="EXCUSED">Justificado</SelectItem>
+            </SelectContent>
+          </Select>
+        </td>
+      </tr>
+    );
+  })}
+
+  {students.length === 0 ? (
+    <tr>
+      <td colSpan={2} className="p-3 text-center text-gray-500">
+        Sin estudiantes
+      </td>
+    </tr>
+  ) : null}
+</tbody>
                       </table>
                     </div>
 

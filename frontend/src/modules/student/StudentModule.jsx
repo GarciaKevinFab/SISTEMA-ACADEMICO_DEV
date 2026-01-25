@@ -314,26 +314,30 @@ export default function StudentModule() {
                         {mode === "admin" && (
                             <div className="rounded-2xl border border-white/50 dark:border-white/10 p-5 bg-white/60 dark:bg-neutral-900/40 shadow-sm transition-all hover:shadow-md">
                                 <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-end">
-                                    {/* COLUMNA 1: BUSCADOR */}
-                                    <div className="md:col-span-7 space-y-2">
-                                        <Label className="flex items-center gap-2 text-muted-foreground font-semibold">
-                                            <Search className="h-4 w-4 text-indigo-500" />
-                                            Buscar estudiante
-                                        </Label>
-                                        <div className="relative group">
-                                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 opacity-50 transition-opacity group-hover:opacity-100" />
-                                            <Input
-                                                className="pl-10 rounded-xl bg-white/80 dark:bg-black/20 border-white/20 focus:ring-2 transition-all duration-300"
-                                                placeholder="Documento, apellidos, nombres..."
-                                                value={q} 
-                                                onChange={(e) => setQ(e.target.value)}
-                                            />
-                                        </div>
-                                        <div className="flex items-center gap-2 text-[10px] uppercase tracking-wider text-muted-foreground/70 pl-1">
-                                            <Info className="h-3 w-3" />
-                                            <span>Filtro por DNI o Apellidos (Backend 'q')</span>
-                                        </div>
-                                    </div>
+                                   {/* COLUMNA 1: BUSCADOR */}
+<div className="md:col-span-7 space-y-2">
+    <Label className="flex items-center gap-2 text-muted-foreground font-semibold">
+        <Search className="h-4 w-4 text-indigo-500" />
+        Buscar estudiante
+    </Label>
+    <div className="relative group">
+        {/* ✅ LA LUPA SOLO APARECE SI 'q' ESTÁ VACÍO */}
+        {!q && (
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 opacity-50 transition-opacity group-hover:opacity-100 pointer-events-none" />
+        )}
+        
+        <Input
+            className={`${!q ? "pl-10" : "pl-3"} rounded-xl bg-white/80 dark:bg-black/20 border-white/20 focus:ring-2 transition-all duration-300`}
+            placeholder="       Documento, apellidos, nombres..."
+            value={q} 
+            onChange={(e) => setQ(e.target.value)}
+        />
+    </div>
+    <div className="flex items-center gap-2 text-[10px] uppercase tracking-wider text-muted-foreground/70 pl-1">
+        <Info className="h-3 w-3" />
+        <span>Filtro por DNI o Apellidos (Backend 'q')</span>
+    </div>
+</div>
 
                                     {/* COLUMNA 2: SELECTOR */}
                                     <div className="md:col-span-5 space-y-2">
