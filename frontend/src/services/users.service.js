@@ -17,4 +17,7 @@ export const UsersService = {
     resetPassword: (id) => api.post(`/users/${id}/reset-password`).then((r) => r.data),
 
     assignRoles: (id, roles) => api.post(`/users/${id}/roles`, { roles }).then((r) => r.data),
+
+    changeMyPassword: (payload) => api.post("/auth/change-password", payload).then((r) => r.data),
 };
+

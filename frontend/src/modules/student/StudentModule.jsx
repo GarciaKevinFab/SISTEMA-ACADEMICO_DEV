@@ -13,7 +13,6 @@ import {
     Users,
     Info,
     ChevronRight,
-    School,
 } from "lucide-react";
 
 import {
@@ -28,17 +27,11 @@ import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
 
 // ✅ Tabs (shadcn)
-import {
-    Tabs,
-    TabsContent,
-    TabsList,
-    TabsTrigger,
-} from "../../components/ui/tabs";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/tabs";
 
 import { StudentsService } from "../../services/students.service";
+import { UsersService } from "../../services/users.service";
 import StudentProfileForm from "./StudentProfileForm";
-
-// ✅ IMPORTA TU CARD
 import StudentKardexCard from "./StudentKardexCard";
 
 import { useAuth } from "../../context/AuthContext";
@@ -78,7 +71,8 @@ const getStudentLabel = (s) => {
 };
 
 export default function StudentModule() {
-    const { hasPerm, roles = [] } = useAuth();
+    // ✅ ahora sí traemos refreshMe para evitar reload
+    const { hasPerm, roles = [], user, refreshMe } = useAuth();
 
     const isAdminSystem = roles.some((r) =>
         String(r).toUpperCase().includes("ADMIN_SYSTEM")
@@ -109,6 +103,9 @@ export default function StudentModule() {
         hasPerm(PERMS["student.self.kardex.view"]) ||
         isStudentRole;
 
+    // ✅ GATE: obliga cambio solo si es student role y flag true
+    const mustChangePassword = isStudentRole && !!user?.must_change_password;
+
     /* ===================== STATE ===================== */
     const [loading, setLoading] = useState(true);
 
@@ -124,6 +121,14 @@ export default function StudentModule() {
 
     // Tabs
     const [tab, setTab] = useState("profile");
+
+    // ✅ FORM cambio contraseña temporal
+    const [pwd, setPwd] = useState({
+        current_password: "",
+        new_password: "",
+        confirm_password: "",
+    });
+    const [pwdSaving, setPwdSaving] = useState(false);
 
     /* ===================== LOADERS ===================== */
     const loadMyProfile = useCallback(async () => {
@@ -233,15 +238,47 @@ export default function StudentModule() {
         }
     };
 
+    // ✅ CAMBIAR CONTRASEÑA TEMPORAL (sin reload)
+    const onChangeTempPassword = async (e) => {
+        e.preventDefault();
+        if (pwdSaving) return;
+
+        const cur = String(pwd.current_password || "").trim();
+        const np = String(pwd.new_password || "").trim();
+        const cp = String(pwd.confirm_password || "").trim();
+
+        if (!cur || !np || !cp) return toast.error("Completa todos los campos.");
+        if (np !== cp) return toast.error("La confirmación no coincide.");
+        if (np.length < 8)
+            return toast.error("La nueva contraseña debe tener al menos 8 caracteres.");
+
+        try {
+            setPwdSaving(true);
+
+            await UsersService.changeMyPassword({
+                current_password: cur,
+                new_password: np,
+            });
+
+            // ✅ refresca /auth/me y desbloquea sin recargar
+            if (refreshMe) await refreshMe();
+
+            // limpia form
+            setPwd({ current_password: "", new_password: "", confirm_password: "" });
+
+            toast.success("Contraseña actualizada. Ya puedes continuar.");
+        } catch (err) {
+            toast.error(err?.response?.data?.detail || "No se pudo actualizar la contraseña");
+        } finally {
+            setPwdSaving(false);
+        }
+    };
+
     /* ===================== KÁRDEX KEY ===================== */
     const kardexKey = useMemo(() => {
         if (!canViewKardex) return "";
 
-        if (mode === "admin") {
-            // Si tu backend acepta ID: ok.
-            // Si solo acepta DNI, cambia a: student?.numDocumento || selectedId
-            return selectedId || "";
-        }
+        if (mode === "admin") return selectedId || "";
 
         return (
             student?.id ||
@@ -279,7 +316,7 @@ export default function StudentModule() {
     }
 
     return (
-       <div className="w-full min-w-0 p-4 md:p-6 pb-40 space-y-6">
+        <div className="w-full min-w-0 p-4 md:p-6 pb-40 space-y-6">
             <motion.div {...fade}>
                 <Card className="rounded-2xl shadow-[0_8px_30px_rgba(0,0,0,0.06)] border-t-4 border-t-slate-700 bg-white/70 dark:bg-neutral-900/60 backdrop-blur-md">
                     <CardHeader className="pb-3">
@@ -300,7 +337,7 @@ export default function StudentModule() {
                                     variant="outline"
                                     className="rounded-xl gap-2"
                                     onClick={() => (mode === "admin" ? loadCandidates() : loadMyProfile())}
-                                    disabled={loading || studentLoading}
+                                    disabled={loading || studentLoading || pwdSaving}
                                 >
                                     <RefreshCw className={`h-4 w-4 ${(loading || studentLoading) ? "animate-spin" : ""}`} />
                                     Recargar
@@ -310,43 +347,114 @@ export default function StudentModule() {
                     </CardHeader>
 
                     <CardContent className="space-y-5">
-                       {/* ADMIN: picker mejorado */}
+                        {/* ✅ BLOQUE: CAMBIO DE CONTRASEÑA TEMPORAL */}
+                        {mustChangePassword && (
+                            <div className="rounded-2xl border border-amber-200 bg-amber-50/60 dark:bg-amber-900/10 p-5">
+                                <div className="flex items-start gap-3">
+                                    <ShieldAlert className="h-5 w-5 text-amber-600 mt-0.5" />
+                                    <div className="min-w-0">
+                                        <p className="font-semibold text-amber-800 dark:text-amber-200">
+                                            Primer ingreso: cambia tu contraseña
+                                        </p>
+                                        <p className="text-sm text-amber-700/80 dark:text-amber-200/70">
+                                            Estás usando una contraseña temporal. Cámbiala para continuar.
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <form onSubmit={onChangeTempPassword} className="mt-4 grid gap-3">
+                                    <div>
+                                        <Label>Contraseña temporal</Label>
+                                        <Input
+                                            type="password"
+                                            className="rounded-xl"
+                                            value={pwd.current_password}
+                                            onChange={(e) =>
+                                                setPwd((s) => ({ ...s, current_password: e.target.value }))
+                                            }
+                                            required
+                                            disabled={pwdSaving}
+                                        />
+                                    </div>
+
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                        <div>
+                                            <Label>Nueva contraseña</Label>
+                                            <Input
+                                                type="password"
+                                                className="rounded-xl"
+                                                value={pwd.new_password}
+                                                onChange={(e) =>
+                                                    setPwd((s) => ({ ...s, new_password: e.target.value }))
+                                                }
+                                                required
+                                                disabled={pwdSaving}
+                                            />
+                                            <p className="text-[11px] text-amber-700/70 mt-1">
+                                                Tip: mínimo 8 caracteres (ideal: mayúscula, número y símbolo).
+                                            </p>
+                                        </div>
+
+                                        <div>
+                                            <Label>Confirmar nueva contraseña</Label>
+                                            <Input
+                                                type="password"
+                                                className="rounded-xl"
+                                                value={pwd.confirm_password}
+                                                onChange={(e) =>
+                                                    setPwd((s) => ({ ...s, confirm_password: e.target.value }))
+                                                }
+                                                required
+                                                disabled={pwdSaving}
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div className="flex justify-end">
+                                        <Button
+                                            className="rounded-xl bg-gradient-to-r from-amber-600 to-orange-600"
+                                            disabled={pwdSaving}
+                                        >
+                                            {pwdSaving ? "Actualizando..." : "Actualizar contraseña"}
+                                        </Button>
+                                    </div>
+                                </form>
+                            </div>
+                        )}
+
+                        {/* ADMIN: picker */}
                         {mode === "admin" && (
                             <div className="rounded-2xl border border-white/50 dark:border-white/10 p-5 bg-white/60 dark:bg-neutral-900/40 shadow-sm transition-all hover:shadow-md">
                                 <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-end">
-                                   {/* COLUMNA 1: BUSCADOR */}
-<div className="md:col-span-7 space-y-2">
-    <Label className="flex items-center gap-2 text-muted-foreground font-semibold">
-        <Search className="h-4 w-4 text-indigo-500" />
-        Buscar estudiante
-    </Label>
-    <div className="relative group">
-        {/* ✅ LA LUPA SOLO APARECE SI 'q' ESTÁ VACÍO */}
-        {!q && (
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 opacity-50 transition-opacity group-hover:opacity-100 pointer-events-none" />
-        )}
-        
-        <Input
-            className={`${!q ? "pl-10" : "pl-3"} rounded-xl bg-white/80 dark:bg-black/20 border-white/20 focus:ring-2 transition-all duration-300`}
-            placeholder="       Documento, apellidos, nombres..."
-            value={q} 
-            onChange={(e) => setQ(e.target.value)}
-        />
-    </div>
-    <div className="flex items-center gap-2 text-[10px] uppercase tracking-wider text-muted-foreground/70 pl-1">
-        <Info className="h-3 w-3" />
-        <span>Filtro por DNI o Apellidos (Backend 'q')</span>
-    </div>
-</div>
+                                    <div className="md:col-span-7 space-y-2">
+                                        <Label className="flex items-center gap-2 text-muted-foreground font-semibold">
+                                            <Search className="h-4 w-4 text-indigo-500" />
+                                            Buscar estudiante
+                                        </Label>
+                                        <div className="relative group">
+                                            {!q && (
+                                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 opacity-50 transition-opacity group-hover:opacity-100 pointer-events-none" />
+                                            )}
 
-                                    {/* COLUMNA 2: SELECTOR */}
+                                            <Input
+                                                className={`${!q ? "pl-10" : "pl-3"} rounded-xl bg-white/80 dark:bg-black/20 border-white/20 focus:ring-2 transition-all duration-300`}
+                                                placeholder="       Documento, apellidos, nombres..."
+                                                value={q}
+                                                onChange={(e) => setQ(e.target.value)}
+                                            />
+                                        </div>
+                                        <div className="flex items-center gap-2 text-[10px] uppercase tracking-wider text-muted-foreground/70 pl-1">
+                                            <Info className="h-3 w-3" />
+                                            <span>Filtro por DNI o Apellidos (Backend 'q')</span>
+                                        </div>
+                                    </div>
+
                                     <div className="md:col-span-5 space-y-2">
                                         <Label className="flex items-center gap-2 text-muted-foreground font-semibold">
                                             <Users className="h-4 w-4 text-emerald-500" />
                                             Resultados ({candidates.length})
                                         </Label>
                                         <div className="relative group">
-                                            {/* Icono decorativo de flecha a la derecha */}
                                             <ChevronRight className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 opacity-50 pointer-events-none rotate-90" />
                                             <select
                                                 className="w-full rounded-xl border border-input bg-white/80 dark:bg-black/20 px-3 py-2 text-sm shadow-sm transition-all focus:ring-2 outline-none appearance-none cursor-pointer hover:bg-white dark:hover:bg-black/40"
@@ -355,7 +463,6 @@ export default function StudentModule() {
                                             >
                                                 <option value="">— Selecciona un resultado —</option>
                                                 {candidates.map((s) => {
-                                                    // Mantenemos tu lógica de mapeo intacta
                                                     const id = s.id || s._id;
                                                     const ap = `${s.apellidoPaterno || ""} ${s.apellidoMaterno || ""}`.trim();
                                                     const name = `${ap} ${s.nombres || ""}`.trim() || "—";
@@ -371,31 +478,29 @@ export default function StudentModule() {
                                     </div>
                                 </div>
 
-                                {/* BARRA INFERIOR: ESTADO DEL SELECCIONADO */}
                                 {studentLoading ? (
                                     <div className="mt-4 flex items-center justify-center gap-2 text-sm text-muted-foreground py-2 animate-pulse">
                                         <RefreshCw className="h-4 w-4 animate-spin" /> Cargando ficha...
                                     </div>
                                 ) : selectedId && student ? (
-                                    <motion.div 
+                                    <motion.div
                                         {...fade}
                                         className="mt-4 rounded-xl border border-emerald-500/20 bg-emerald-500/5 px-4 py-3 text-sm flex flex-col sm:flex-row items-center justify-between gap-3"
                                     >
                                         <div className="flex items-center gap-3 min-w-0 w-full overflow-hidden">
-                                        <div className="h-8 w-8 rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center text-emerald-600 dark:text-emerald-400 font-bold shrink-0">
-                                            <User className="h-4 w-4" />
+                                            <div className="h-8 w-8 rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center text-emerald-600 dark:text-emerald-400 font-bold shrink-0">
+                                                <User className="h-4 w-4" />
+                                            </div>
+
+                                            <div className="min-w-0 flex-1 overflow-hidden">
+                                                <span className="block font-semibold text-emerald-700 dark:text-emerald-300 truncate">
+                                                    Estudiante Activo
+                                                </span>
+                                                <span className="block text-muted-foreground truncate text-xs">
+                                                    {selectedLabel}
+                                                </span>
+                                            </div>
                                         </div>
-
-                                        <div className="min-w-0 flex-1 overflow-hidden">
-                                        <span className="block font-semibold text-emerald-700 dark:text-emerald-300 truncate">
-                                            Estudiante Activo
-                                            </span>
-                                        <span className="block text-muted-foreground truncate text-xs">
-                                        {selectedLabel}
-                                        </span>
-                                            </div>
-                                            </div>
-
 
                                         {canViewKardex && (
                                             <Button
@@ -413,55 +518,59 @@ export default function StudentModule() {
                             </div>
                         )}
 
-                        {/* ✅ Tabs con estilo tipo "píldora" (mejor UX visual) */}
+                        {/* Tabs */}
                         <Tabs value={tab} onValueChange={setTab} className="space-y-4">
-                            {/* PEGA ESTO EN SU LUGAR */}
-                           <TabsList className="w-full grid grid-cols-2 gap-3 sm:gap-4 bg-transparent p-0 mb-6">
-  <TabsTrigger
-    value="profile"
-    className="
-      w-full min-w-0
-      rounded-xl border border-transparent
-      data-[state=active]:border-slate-200 dark:data-[state=active]:border-slate-800
-      data-[state=active]:bg-white dark:data-[state=active]:bg-black/40
-      data-[state=active]:shadow-sm
-      py-3 px-2 sm:px-4
-      transition-all duration-300
-    "
-  >
-    <div className="flex items-center justify-center gap-2 min-w-0 w-full overflow-hidden">
-      <User className="h-4 w-4 opacity-70 shrink-0" />
-      <span className="min-w-0 truncate">Ficha de Perfil</span>
-    </div>
-  </TabsTrigger>
+                            <TabsList className="w-full grid grid-cols-2 gap-3 sm:gap-4 bg-transparent p-0 mb-6">
+                                <TabsTrigger
+                                    value="profile"
+                                    className="
+                    w-full min-w-0
+                    rounded-xl border border-transparent
+                    data-[state=active]:border-slate-200 dark:data-[state=active]:border-slate-800
+                    data-[state=active]:bg-white dark:data-[state=active]:bg-black/40
+                    data-[state=active]:shadow-sm
+                    py-3 px-2 sm:px-4
+                    transition-all duration-300
+                  "
+                                >
+                                    <div className="flex items-center justify-center gap-2 min-w-0 w-full overflow-hidden">
+                                        <User className="h-4 w-4 opacity-70 shrink-0" />
+                                        <span className="min-w-0 truncate">Ficha de Perfil</span>
+                                    </div>
+                                </TabsTrigger>
 
-  {canViewKardex && (
-    <TabsTrigger
-      value="kardex"
-      disabled={mode === "admin" && !selectedId}
-      className="
-        w-full min-w-0
-        rounded-xl border border-transparent
-        data-[state=active]:border-slate-200 dark:data-[state=active]:border-slate-800
-        data-[state=active]:bg-white dark:data-[state=active]:bg-black/40
-        data-[state=active]:shadow-sm
-        py-3 px-2 sm:px-4
-        transition-all duration-300
-        data-[disabled]:opacity-40
-      "
-    >
-      <div className="flex items-center justify-center gap-2 min-w-0 w-full overflow-hidden">
-        <GraduationCap className="h-4 w-4 opacity-70 shrink-0" />
-        <span className="min-w-0 truncate">Historial Académico</span>
-      </div>
-    </TabsTrigger>
-  )}
-</TabsList>
-
+                                {canViewKardex && (
+                                    <TabsTrigger
+                                        value="kardex"
+                                        disabled={(mode === "admin" && !selectedId) || mustChangePassword}
+                                        className="
+                      w-full min-w-0
+                      rounded-xl border border-transparent
+                      data-[state=active]:border-slate-200 dark:data-[state=active]:border-slate-800
+                      data-[state=active]:bg-white dark:data-[state=active]:bg-black/40
+                      data-[state=active]:shadow-sm
+                      py-3 px-2 sm:px-4
+                      transition-all duration-300
+                      data-[disabled]:opacity-40
+                    "
+                                    >
+                                        <div className="flex items-center justify-center gap-2 min-w-0 w-full overflow-hidden">
+                                            <GraduationCap className="h-4 w-4 opacity-70 shrink-0" />
+                                            <span className="min-w-0 truncate">Historial Académico</span>
+                                        </div>
+                                    </TabsTrigger>
+                                )}
+                            </TabsList>
 
                             {/* PERFIL */}
                             <TabsContent value="profile" className="mt-0">
-                                {mode === "student" ? (
+                                {mustChangePassword ? (
+                                    <div className="rounded-2xl border border-white/50 dark:border-white/10 p-4 bg-white/60 dark:bg-neutral-900/40">
+                                        <p className="text-sm text-muted-foreground">
+                                            Acceso bloqueado hasta cambiar la contraseña temporal.
+                                        </p>
+                                    </div>
+                                ) : mode === "student" ? (
                                     <StudentProfileForm
                                         mode={mode}
                                         student={student}
@@ -489,7 +598,13 @@ export default function StudentModule() {
                             {/* KÁRDEX */}
                             {canViewKardex ? (
                                 <TabsContent value="kardex" className="mt-0">
-                                    {mode === "admin" && !selectedId ? (
+                                    {mustChangePassword ? (
+                                        <div className="rounded-2xl border border-white/50 dark:border-white/10 p-4 bg-white/60 dark:bg-neutral-900/40">
+                                            <p className="text-sm text-muted-foreground">
+                                                Acceso bloqueado hasta cambiar la contraseña temporal.
+                                            </p>
+                                        </div>
+                                    ) : mode === "admin" && !selectedId ? (
                                         <div className="rounded-2xl border border-white/50 dark:border-white/10 p-4 bg-white/60 dark:bg-neutral-900/40">
                                             <p className="text-sm text-muted-foreground">
                                                 Selecciona un estudiante para ver su kárdex.

@@ -2,7 +2,7 @@
 from django.contrib.auth import get_user_model
 from django.db.models import Q
 from django.utils.crypto import get_random_string
-
+from rest_framework import permissions, status
 from rest_framework import status, permissions
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
@@ -118,6 +118,28 @@ def _paginate_queryset(request, qs, default_page_size=10, max_page_size=100):
 
 
 # ---------- AUTH ----------
+@api_view(["POST"])
+@permission_classes([permissions.IsAuthenticated])
+def change_password(request):
+    u = request.user
+    current_password = (request.data.get("current_password") or "").strip()
+    new_password = (request.data.get("new_password") or "").strip()
+
+    if not current_password or not new_password:
+        return Response({"detail": "Faltan campos."}, status=status.HTTP_400_BAD_REQUEST)
+
+    if not u.check_password(current_password):
+        return Response({"detail": "Contraseña temporal/actual incorrecta."}, status=status.HTTP_400_BAD_REQUEST)
+
+    u.set_password(new_password)
+    if hasattr(u, "must_change_password"):
+        u.must_change_password = False
+        u.save(update_fields=["password", "must_change_password"])
+    else:
+        u.save(update_fields=["password"])
+
+    return Response({"status": "password_changed"})
+
 @api_view(["GET"])
 @permission_classes([permissions.IsAuthenticated])
 def auth_me(request):
@@ -146,17 +168,18 @@ def auth_me(request):
         student_id = None
 
     return Response({
-        "id": u.id,
-        "username": u.username,
-        "email": getattr(u, "email", ""),
-        "full_name": getattr(u, "full_name", ""),
-        "is_active": u.is_active,
-        "is_staff": u.is_staff,
-        "is_superuser": u.is_superuser,
-        "roles": roles,
-        "permissions": perm_codes,
-        "student_id": student_id,
-    })
+    "id": u.id,
+    "username": u.username,
+    "email": getattr(u, "email", ""),
+    "full_name": getattr(u, "full_name", ""),
+    "is_active": u.is_active,
+    "is_staff": u.is_staff,
+    "is_superuser": u.is_superuser,
+    "roles": roles,
+    "permissions": perm_codes,
+    "student_id": student_id,
+    "must_change_password": getattr(u, "must_change_password", False),  # ✅
+})
 
 
 # ✅ ---------- USERS (COLLECTION) ----------
@@ -344,8 +367,10 @@ def users_reset_password(request, pk: int):
 
     tmp = get_random_string(10)
     user.set_password(tmp)
-    user.save(update_fields=["password"])
+    user.must_change_password = True  # ✅ OBLIGA CAMBIO
+    user.save(update_fields=["password", "must_change_password"])
     return Response({"status": "password_reset", "temporary_password": tmp})
+
 
 
 @api_view(["POST"])

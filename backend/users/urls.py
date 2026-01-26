@@ -11,6 +11,7 @@ from .views import (
     users_reset_password,
     users_search,
     users_assign_roles,
+    change_password,
 )
 
 urlpatterns = [
@@ -18,6 +19,7 @@ urlpatterns = [
     path("auth/token/", TokenObtainPairView.as_view(), name="token_obtain_pair"),
     path("auth/token/refresh/", TokenRefreshView.as_view(), name="token_refresh"),
     path("auth/me", auth_me, name="auth_me"),
+    path("auth/change-password", change_password),
 
     # ---------- USERS ----------
     path("users", users_collection, name="users_collection"),     # ✅ GET/POST en una sola ruta
