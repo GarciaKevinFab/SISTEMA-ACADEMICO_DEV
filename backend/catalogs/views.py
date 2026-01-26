@@ -127,6 +127,23 @@ def _require_staff(request):
         return Response({"detail": "No autorizado."}, status=403)
     return None
 
+def _require_staff_or_teacher(request):
+    if not request.user.is_authenticated:
+        return Response({"detail": "No autorizado."}, status=403)
+
+    # staff OK
+    if getattr(request.user, "is_staff", False):
+        return None
+
+    # teacher role OK (tu User tiene ManyToMany roles)
+    try:
+        if request.user.roles.filter(name__iexact="TEACHER").exists():
+            return None
+    except Exception:
+        pass
+
+    return Response({"detail": "No autorizado."}, status=403)
+
 def _xlsx_response(wb: Workbook, filename: str):
     buf = io.BytesIO()
     wb.save(buf)
@@ -588,33 +605,57 @@ class TeachersViewSet(viewsets.ModelViewSet):
 
     def create(self, request, *args, **kwargs):
         teacher_role, _ = Role.objects.get_or_create(name="TEACHER")
+
         ser = self.get_serializer(data=request.data)
         ser.is_valid(raise_exception=True)
-        # ✅ Crear User automáticamente
         data = ser.validated_data
-        username_base = data.get("document", "") or data.get("full_name", "").split()[0] or "teacher"
+
+        # username base: documento o primer nombre
+        username_base = (data.get("document", "") or "").strip() or (data.get("full_name", "").split()[0] if (data.get("full_name") or "").strip() else "teacher")
         username = username_base
         k = 1
         while User.objects.filter(username=username).exists():
             k += 1
             username = f"{username_base}-{k}"
 
+        # ✅ password temporal
         temp_password = get_random_string(12)
-        user = User.objects.create_user(username=username, password=temp_password, email=data.get("email", ""), full_name=data.get("full_name", ""))
-        UserRole.objects.get_or_create(user=user, role=teacher_role)
+
+        # email fallback
+        email = (data.get("email", "") or "").strip().lower()
+        if not email:
+            email = f"{username}@no-email.local"
+
+        # ✅ crea user (temporal) y OBLIGA CAMBIO
+        user = User.objects.create_user(
+            username=username,
+            password=temp_password,
+            email=email,
+            full_name=data.get("full_name", "") or "",
+        )
+        user.must_change_password = True
+        user.save(update_fields=["must_change_password"])
+
+        # ✅ asignar rol TEACHER (compat con tu esquema ACL)
+        try:
+            user.roles.add(teacher_role)  # si tu User tiene ManyToMany roles
+        except Exception:
+            UserRole.objects.get_or_create(user=user, role=teacher_role)
 
         # Crear Teacher
         teacher = ser.save(user=user)
 
-        # ✅ Asignar cursos (asumiendo Teacher.courses ManyToManyField(Course))
+        # ✅ Asignar cursos (ManyToMany)
         courses = data.get("courses", [])
-        if courses and hasattr(teacher, "courses"):
-            teacher.courses.set(courses)
+        if courses is not None and hasattr(teacher, "courses"):
+            teacher.courses.set(courses or [])
 
         out = self.get_serializer(teacher).data
         out["username"] = user.username
         out["temporary_password"] = temp_password
+        out["must_change_password"] = True
         return Response(out, status=201)
+
 
 UBIGEO_DEMO = {
     "15": {  # Lima
@@ -841,7 +882,7 @@ def institution_media_delete(request, kind: str):
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def imports_template(request, type: str):
-    not_ok = _require_staff(request)
+    not_ok = _require_staff_or_teacher(request)
     if not_ok:
         return not_ok
 
@@ -876,7 +917,7 @@ def imports_template(request, type: str):
 @permission_classes([IsAuthenticated])
 @parser_classes([MultiPartParser, FormParser])
 def imports_start(request, type: str):
-    not_ok = _require_staff(request)
+    not_ok = _require_staff_or_teacher(request)
     if not_ok:
         return not_ok
 
