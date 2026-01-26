@@ -5,7 +5,7 @@ from .views import (
     ubigeo_search, ubigeo_departments, ubigeo_provinces, ubigeo_districts,
     institution_settings, institution_media,
     imports_template, imports_start, imports_status,
-    backups_collection, backup_download, export_dataset,
+    backups_collection, backup_download, export_dataset,backup_delete,backups_cleanup,institution_media_delete
 )
 
 router = DefaultRouter(trailing_slash=False)
@@ -27,6 +27,7 @@ urlpatterns = [
     # Institution
     path("institution/settings", institution_settings),
     path("institution/media", institution_media),
+    path("institution/media/<str:kind>", institution_media_delete),
 
     # Imports
     path("imports/templates/<str:type>", imports_template),
@@ -35,6 +36,10 @@ urlpatterns = [
 
     # Backups / Export
     path("exports/backups", backups_collection),
+    path("exports/backups/<int:id>", backup_delete),           # ✅ NUEVO
     path("exports/backups/<int:id>/download", backup_download),
     path("exports/dataset", export_dataset),
+    path("exports/backups/cleanup", backups_cleanup),
+
+
 ]

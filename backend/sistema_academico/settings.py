@@ -13,7 +13,6 @@ from corsheaders.defaults import default_headers
 # OJO: si usas routers sin slash final, esto debe quedar False (como lo tienes)
 APPEND_SLASH = False
 
-
 INSTALLED_APPS = [
     # Django
     "django.contrib.admin",
@@ -46,7 +45,6 @@ INSTALLED_APPS = [
     "audit",
 ]
 
-
 MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
@@ -61,7 +59,6 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
-
 
 ROOT_URLCONF = "sistema_academico.urls"
 
@@ -83,7 +80,6 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "sistema_academico.wsgi.application"
 ASGI_APPLICATION = "sistema_academico.asgi.application"
-
 
 # -----------------------
 # DATABASE

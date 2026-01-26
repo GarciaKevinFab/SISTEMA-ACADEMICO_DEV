@@ -55,6 +55,8 @@ export const Institution = {
         fd.append("kind", kind);
         return getData(api.post("/catalogs/institution/media", fd));
     },
+    removeMedia: (kind) => getData(api.delete(`/catalogs/institution/media/${kind}`)),
+
 };
 
 // ------------------ Importadores ------------------
@@ -93,4 +95,9 @@ export const Backup = {
         api.get(`/catalogs/exports/backups/${id}/download`, { responseType: "blob" }),
 
     exportDataset: (dataset) => getData(api.post("/catalogs/exports/dataset", { dataset })),
+    remove: (id) => getData(api.delete(`/catalogs/exports/backups/${id}`)),
+    cleanup: (days = 30, only_datasets = false) =>
+        getData(api.post(`/catalogs/exports/backups/cleanup`, { days, only_datasets })),
+
+
 };

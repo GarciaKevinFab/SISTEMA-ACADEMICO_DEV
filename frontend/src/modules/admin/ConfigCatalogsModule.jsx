@@ -1306,7 +1306,7 @@ const TeachersSection = () => {
 // ===============================================================
 // Ubigeo + Parámetros de institución (logo/firma)
 // ===============================================================
-const MediaUpload = ({ label, url, onChange, loading }) => {
+const MediaUpload = ({ label, url, onChange, onRemove, loading }) => {
     const [localPreview, setLocalPreview] = React.useState("");
     const [imgError, setImgError] = React.useState(false);
 
@@ -1317,10 +1317,18 @@ const MediaUpload = ({ label, url, onChange, loading }) => {
     }, [localPreview]);
 
     const src = !imgError ? (localPreview || url) : "";
+    const isSaved = !!url && !localPreview; // cuando ya viene del backend (no preview local)
 
     return (
-        <div className="space-y-1 w-full">
-            <Label>{label}</Label>
+        <div className="space-y-2 w-full">
+            <div className="flex items-center justify-between">
+                <Label>{label}</Label>
+                {isSaved && (
+                    <span className="text-xs px-2 py-1 rounded-full bg-green-100 text-green-700">
+                        Guardado ✅
+                    </span>
+                )}
+            </div>
 
             <div className="flex items-center gap-3 w-full">
                 {src ? (
@@ -1336,7 +1344,7 @@ const MediaUpload = ({ label, url, onChange, loading }) => {
                     </div>
                 )}
 
-                <div className="w-full space-y-1">
+                <div className="w-full space-y-2">
                     <Input
                         type="file"
                         accept="image/*"
@@ -1357,17 +1365,36 @@ const MediaUpload = ({ label, url, onChange, loading }) => {
                         }}
                     />
 
-                    {loading && (
-                        <div className="text-xs text-blue-600 flex items-center gap-2">
-                            <span className="inline-block h-3 w-3 rounded-full border-2 border-slate-200 border-t-blue-600 animate-spin" />
-                            Subiendo...
-                        </div>
-                    )}
+                    <div className="flex items-center gap-2">
+                        {loading && (
+                            <div className="text-xs text-blue-600 flex items-center gap-2">
+                                <span className="inline-block h-3 w-3 rounded-full border-2 border-slate-200 border-t-blue-600 animate-spin" />
+                                Subiendo...
+                            </div>
+                        )}
+
+                        {/* ✅ Quitar */}
+                        {url && !loading && (
+                            <Button
+                                type="button"
+                                variant="outline"
+                                className="h-8 rounded-xl border-red-200 text-red-700 hover:bg-red-50"
+                                onClick={() => {
+                                    setLocalPreview("");
+                                    setImgError(false);
+                                    onRemove?.();
+                                }}
+                            >
+                                Quitar
+                            </Button>
+                        )}
+                    </div>
                 </div>
             </div>
         </div>
     );
 };
+
 
 const InstitutionSection = () => {
     const [settings, setSettings] = useState(null);
@@ -1431,34 +1458,51 @@ const InstitutionSection = () => {
         }
     };
 
+    const removeMedia = async (kind) => {
+        try {
+            await Institution.removeMedia(kind);
+            setSettings((s) => ({
+                ...s,
+                ...(kind === "LOGO" ? { logo_url: "" } : {}),
+                ...(kind === "SIGNATURE" ? { signature_url: "" } : {}),
+            }));
+            await load();
+            toast.success(kind === "LOGO" ? "Logo eliminado" : "Firma eliminada");
+        } catch (e) {
+            toast.error(formatApiError(e, "No se pudo eliminar"));
+        }
+    };
+
+
     const onUpload = async (kind, file) => {
         try {
             setUploadingKind(kind);
 
             const r = await Institution.uploadMedia(kind, file);
-            toast.success("Archivo subido");
 
-            let url = r?.url || r?.file || r?.file_url;
+            // ✅ usa absolute_url primero (evita el bug /api/media)
+            let url = r?.absolute_url || r?.url;
 
-            const API_BASE = import.meta?.env?.VITE_API_URL || import.meta?.env?.VITE_API_BASE_URL || "";
-            if (url && !/^https?:\/\//i.test(url) && API_BASE) {
-                url = `${API_BASE.replace(/\/$/, "")}/${String(url).replace(/^\//, "")}`;
-            }
+            if (!url) throw new Error("Backend no devolvió URL del archivo");
 
+            // ✅ actualiza UI inmediatamente
             setSettings((s) => ({
                 ...s,
-                ...(kind === "LOGO"
-                    ? { logo_url: url }
-                    : kind === "SIGNATURE"
-                        ? { signature_url: url }
-                        : {}),
+                ...(kind === "LOGO" ? { logo_url: url } : {}),
+                ...(kind === "SIGNATURE" ? { signature_url: url } : {}),
             }));
+
+            // ✅ confirma persistencia real (si se guardó de verdad, regresará en GET)
+            await load();
+
+            toast.success(kind === "LOGO" ? "Logo guardado" : "Firma guardada");
         } catch (e) {
-            toast.error(formatApiError(e));
+            toast.error(formatApiError(e, "No se pudo subir el archivo"));
         } finally {
             setUploadingKind(null);
         }
     };
+
 
     return (
         <Section
@@ -1662,6 +1706,7 @@ const InstitutionSection = () => {
                                             url={settings.logo_url}
                                             loading={uploadingKind === "LOGO"}
                                             onChange={(f) => onUpload("LOGO", f)}
+                                            onRemove={() => removeMedia("LOGO")}
                                         />
                                     </div>
                                 </div>
@@ -1674,6 +1719,7 @@ const InstitutionSection = () => {
                                             url={settings.signature_url}
                                             loading={uploadingKind === "SIGNATURE"}
                                             onChange={(f) => onUpload("SIGNATURE", f)}
+                                            onRemove={() => removeMedia("SIGNATURE")}
                                         />
                                     </div>
                                     <p className="text-[10px] text-slate-400 mt-1">Recomendado: Imagen PNG sin fondo.</p>
@@ -1996,6 +2042,15 @@ const BackupTab = () => {
             toast.error(formatApiError(e));
         }
     };
+    const removeBackup = async (b) => {
+        try {
+            await Backup.remove(b.id);
+            toast.success("Backup eliminado");
+            load();
+        } catch (e) {
+            toast.error(formatApiError(e, "No se pudo eliminar el backup"));
+        }
+    };
 
     const exportDataset = async (ds) => {
         try {
@@ -2105,15 +2160,56 @@ const BackupTab = () => {
                                                     <td className="px-6 py-3">{b.scope || "-"}</td>
                                                     <td className="px-6 py-3">{b.size ? `${(b.size / (1024 * 1024)).toFixed(2)} MB` : "-"}</td>
                                                     <td className="px-6 py-3">
-                                                        <Button
-                                                            type="button"
-                                                            variant="outline"
-                                                            className="rounded-xl inline-flex items-center gap-1"
-                                                            onClick={() => downloadBackup(b)}
-                                                        >
-                                                            <Download className="h-4 w-4" /> Descargar
-                                                        </Button>
+                                                        <div className="flex items-center gap-2">
+                                                            <Button
+                                                                type="button"
+                                                                variant="outline"
+                                                                className="rounded-xl inline-flex items-center gap-1"
+                                                                onClick={() => downloadBackup(b)}
+                                                            >
+                                                                <Download className="h-4 w-4" /> Descargar
+                                                            </Button>
+
+                                                            <AlertDialog>
+                                                                <AlertDialogTrigger asChild>
+                                                                    <Button
+                                                                        type="button"
+                                                                        variant="outline"
+                                                                        className="rounded-xl inline-flex items-center gap-1 border-red-200 text-red-700 hover:bg-red-50"
+                                                                    >
+                                                                        <Trash2 className="h-4 w-4" /> Eliminar
+                                                                    </Button>
+                                                                </AlertDialogTrigger>
+
+                                                                <AlertDialogContent className="max-w-[92vw] sm:max-w-md rounded-2xl">
+                                                                    <AlertDialogHeader>
+                                                                        <AlertDialogTitle className="flex items-center gap-2 text-red-600">
+                                                                            <AlertCircle className="h-5 w-5" />
+                                                                            ¿Eliminar backup?
+                                                                        </AlertDialogTitle>
+                                                                        <AlertDialogDescription className="text-slate-600">
+                                                                            Se eliminará el ZIP y el registro del historial.
+                                                                            <br />
+                                                                            ID: <span className="font-bold text-slate-900">{b.id}</span>
+                                                                        </AlertDialogDescription>
+                                                                    </AlertDialogHeader>
+
+                                                                    <AlertDialogFooter className="flex-col sm:flex-row gap-2 mt-4">
+                                                                        <AlertDialogCancel className="w-full sm:w-auto rounded-xl border-slate-200">
+                                                                            Cancelar
+                                                                        </AlertDialogCancel>
+                                                                        <AlertDialogAction
+                                                                            className="w-full sm:w-auto bg-red-600 hover:bg-red-700 rounded-xl"
+                                                                            onClick={() => removeBackup(b)}
+                                                                        >
+                                                                            Sí, eliminar
+                                                                        </AlertDialogAction>
+                                                                    </AlertDialogFooter>
+                                                                </AlertDialogContent>
+                                                            </AlertDialog>
+                                                        </div>
                                                     </td>
+
                                                 </tr>
                                             ))}
                                             {rows.length === 0 && (

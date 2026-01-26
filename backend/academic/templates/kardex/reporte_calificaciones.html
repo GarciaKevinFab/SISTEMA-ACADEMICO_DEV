@@ -136,7 +136,8 @@
             line-height: 1.25;
         }
 
-        .signRow {
+        /* ✅ NUEVO: firma bien anclada a su línea */
+        .signWrap {
             margin-top: 18px;
             display: grid;
             grid-template-columns: 1fr 1fr;
@@ -144,38 +145,39 @@
             align-items: end;
         }
 
-        .sigLine {
-            border-top: 1px solid #111;
-            height: 14px;
-        }
-
-        .sigLabel {
-            text-align: center;
-            margin-top: 3px;
-            font-weight: 700;
-            font-size: 9px;
-        }
-
-        .stampRow {
-            margin-top: 8px;
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 60px;
+        .signCol {
+            display: flex;
+            flex-direction: column;
             align-items: center;
         }
 
         .sigImgBox {
-            height: 55px;
+            height: 60px;
             display: flex;
             align-items: flex-end;
             justify-content: center;
-            margin-bottom: 4px;
+            margin-bottom: -10px;
+            /* pegadito a la línea */
         }
 
         .sigImg {
-            max-height: 55px;
-            max-width: 180px;
+            max-height: 100px;
+            max-width: 260px;
             object-fit: contain;
+        }
+
+        .sigLine {
+            width: 100%;
+            border-top: 1px solid #111;
+            height: 0;
+            margin-top: 0;
+        }
+
+        .sigLabel {
+            text-align: center;
+            margin-top: 4px;
+            font-weight: 700;
+            font-size: 9px;
         }
     </style>
 </head>
@@ -288,20 +290,10 @@
         </div>
     </div>
 
-    <!-- SIGNATURES -->
-    <div class="signRow">
-        <div>
-            <div class="sigLine"></div>
-            <div class="sigLabel">SECRETARIO ACADÉMICO</div>
-        </div>
-        <div>
-            <div class="sigLine"></div>
-            <div class="sigLabel">ESTUDIANTE<br />Firma</div>
-        </div>
-    </div>
-
-    <div class="stampRow">
-        <div>
+    <!-- ✅ SIGNATURES (reemplaza signRow + stampRow) -->
+    <div class="signWrap">
+        <!-- SECRETARIO -->
+        <div class="signCol">
             {% if signature_url %}
             <div class="sigImgBox">
                 <img class="sigImg" src="{{ signature_url }}" alt="firma" />
@@ -309,8 +301,17 @@
             {% else %}
             <div style="height:55px;"></div>
             {% endif %}
+
+            <div class="sigLine"></div>
+            <div class="sigLabel">SECRETARIO ACADÉMICO</div>
         </div>
-        <div></div>
+
+        <!-- ESTUDIANTE -->
+        <div class="signCol">
+            <div style="height:55px;"></div>
+            <div class="sigLine"></div>
+            <div class="sigLabel">ESTUDIANTE<br />Firma</div>
+        </div>
     </div>
 
 </body>

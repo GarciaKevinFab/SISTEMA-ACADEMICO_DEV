@@ -11,7 +11,8 @@ import zipfile
 import unicodedata
 from datetime import datetime, date
 from typing import Any, Dict, List, Optional, Tuple
-
+from datetime import timedelta
+from django.utils import timezone
 from django.conf import settings
 from django.core.files.base import ContentFile
 from django.core.management import call_command
@@ -21,15 +22,12 @@ from django.http import Http404, HttpResponse, FileResponse
 from django.db.models import Q
 from django.contrib.auth import get_user_model
 from django.utils.crypto import get_random_string
-
 from openpyxl import Workbook, load_workbook
-
 from rest_framework import viewsets
 from rest_framework.decorators import action, api_view, permission_classes, parser_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser
-
 from catalogs.models import Period
 from acl.models import Role, UserRole
 from students.models import Student
@@ -770,11 +768,71 @@ def institution_settings(request):
 @parser_classes([MultiPartParser, FormParser])
 def institution_media(request):
     file = request.FILES.get("file")
-    kind = request.POST.get("kind")
-    if not file or not kind:
-        return Response({"detail": "file y kind requeridos"}, status=400)
+    kind = (request.POST.get("kind") or "").upper().strip()
+
+    if not file or kind not in ("LOGO", "SIGNATURE"):
+        return Response({"detail": "file y kind (LOGO|SIGNATURE) requeridos"}, status=400)
+
+    # ✅ 1) crear asset
     asset = MediaAsset.objects.create(kind=kind, file=file)
-    return Response(MediaAssetSerializer(asset).data, status=201)
+
+    # ✅ 2) url usable (relativa)
+    rel_url = asset.file.url  # ej: /media/uploads/logo.png
+
+    # ✅ 3) guardar en InstitutionSetting.data
+    inst, _ = InstitutionSetting.objects.get_or_create(pk=1)
+    data = inst.data or {}
+
+    if kind == "LOGO":
+        data["logo_url"] = rel_url
+    elif kind == "SIGNATURE":
+        data["signature_url"] = rel_url
+
+    inst.data = data
+    inst.save(update_fields=["data"])
+
+    # ✅ 4) también devuelve url absoluta si quieres
+    abs_url = request.build_absolute_uri(rel_url)
+
+    return Response({
+        "ok": True,
+        "kind": kind,
+        "url": rel_url,
+        "absolute_url": abs_url,
+        "asset": MediaAssetSerializer(asset).data,
+        "institution": inst.data,
+    }, status=201)
+
+@api_view(["DELETE"])
+@permission_classes([IsAuthenticated])
+def institution_media_delete(request, kind: str):
+    kind = (kind or "").upper().strip()
+    if kind not in ("LOGO", "SIGNATURE"):
+        return Response({"detail": "kind inválido (LOGO|SIGNATURE)"}, status=400)
+
+    inst, _ = InstitutionSetting.objects.get_or_create(pk=1)
+    data = inst.data or {}
+
+    key = "logo_url" if kind == "LOGO" else "signature_url"
+    url = data.get(key)
+
+    # ✅ limpia config
+    if key in data:
+        data[key] = ""
+    inst.data = data
+    inst.save(update_fields=["data"])
+
+    # ✅ opcional: borrar archivo físico si url apunta a /media/...
+    try:
+        if url and isinstance(url, str) and "/media/" in url:
+            rel = url.split("/media/")[-1]
+            fpath = os.path.join(settings.MEDIA_ROOT, rel)
+            if os.path.exists(fpath):
+                os.remove(fpath)
+    except Exception:
+        pass
+
+    return Response({"ok": True, "kind": kind, "cleared": key, "institution": inst.data})
 
 # ─────────────────────────────────────────────────────────────
 # Import templates
@@ -788,48 +846,27 @@ def imports_template(request, type: str):
         return not_ok
 
     type = (type or "").lower().strip()
-    wb = Workbook()
-    ws = wb.active
 
-    if type == "students":
-        ws.title = "students"
-        headers = [
-            "REGIÓN","PROVINCIA","DISTRITO",
-            "CÓDIGO_MODULAR","NOMBRE DE LA INSTITUCIÓN","GESTIÓN","TIPO",
-            "Programa / Carrera","Ciclo","Turno","Seccion",
-            "Apellido Paterno","Apellido Materno","Nombres",
-            "Fecha Nac","Sexo","Num Documento",
-            "Lengua","Periodo","Discapacidad","tipo de discapacidad",
-        ]
-        ws.append(headers)
-        ws.append([
-            "JUNIN","HUANCAYO","HUANCAYO",
-            "123456","INSTITUTO X","PÚBLICA","IEST",
-            "EDUCACIÓN INICIAL",1,"Mañana","A",
-            "PEREZ","GOMEZ","JUAN",
-            "2005-03-15","M","12345678",
-            "CASTELLANO","2026-I","NO","",
-        ])
-        return _xlsx_response(wb, "students_template.xlsx")
+    FILES = {
+        "students": "students_template.xlsx",
+        "grades": "grades_template.xlsx",
+        "plans": "plan_estudios.xlsx",
+    }
 
-    if type == "courses":
-        ws.title = "courses"
-        ws.append(["code","name","credits","hours","plan_id","semester","type"])
-        ws.append(["SIS101","Introducción a Sistemas","3","3","1","1","MANDATORY"])
-        return _xlsx_response(wb, "courses_template.xlsx")
+    filename = FILES.get(type)
+    if not filename:
+        return Response({"detail": "Tipo inválido"}, status=400)
 
-    if type == "grades":
-        ws.title = "grades"
-        ws.append(["student_document","course_code","term","final_grade","PC1","PC2","EP","EF"])
-        ws.append(["12345678","SIS101","2026-I","15","14","16","15","15"])
-        return _xlsx_response(wb, "grades_template.xlsx")
+    file_path = os.path.join(settings.BASE_DIR, "templates", "imports", filename)
+    if not os.path.exists(file_path):
+        raise Http404("Plantilla no encontrada")
 
-    if type == "plans":
-        ws.title = "info"
-        ws.append(["Sube tu Plan de estudios .xlsx (con hojas por carrera)"])
-        return _xlsx_response(wb, "plans_info.xlsx")
-
-    return Response({"detail": "Tipo inválido"}, status=400)
+    return FileResponse(
+        open(file_path, "rb"),
+        as_attachment=True,
+        filename=filename,
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
 
 # ─────────────────────────────────────────────────────────────
 # Import start + status
@@ -1540,6 +1577,57 @@ def backup_download(request, id: int):
         raise Http404
 
     return FileResponse(b.file.open("rb"), as_attachment=True, filename=os.path.basename(b.file.name))
+
+@api_view(["DELETE"])
+@permission_classes([IsAuthenticated])
+def backup_delete(request, id: int):
+    not_ok = _require_staff(request)
+    if not_ok:
+        return not_ok
+
+    try:
+        b = BackupExport.objects.get(pk=id)
+    except BackupExport.DoesNotExist:
+        raise Http404
+
+    # ✅ Borra archivo físico (MEDIA) si existe
+    try:
+        if b.file:
+            b.file.delete(save=False)
+    except Exception:
+        # si el archivo ya no existe, igual borramos el registro
+        pass
+
+    b.delete()
+    return Response({"ok": True, "deleted_id": id})
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def backups_cleanup(request):
+    not_ok = _require_staff(request)
+    if not_ok:
+        return not_ok
+
+    days = int(request.data.get("days") or 30)
+    only_datasets = bool(request.data.get("only_datasets") or False)
+
+    cutoff = timezone.now() - timedelta(days=days)
+
+    qs = BackupExport.objects.filter(created_at__lt=cutoff)
+    if only_datasets:
+        qs = qs.filter(scope__startswith="DATASET_")
+
+    deleted = 0
+    for b in qs:
+        try:
+            if b.file:
+                b.file.delete(save=False)
+        except Exception:
+            pass
+        b.delete()
+        deleted += 1
+
+    return Response({"ok": True, "deleted": deleted, "days": days, "only_datasets": only_datasets})
 
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])

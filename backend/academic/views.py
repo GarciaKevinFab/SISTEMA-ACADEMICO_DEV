@@ -6,6 +6,7 @@ import base64
 import os
 import re
 import unicodedata
+import mimetypes
 from django.conf import settings
 from openpyxl import load_workbook, Workbook
 from django.template.loader import render_to_string
@@ -46,6 +47,7 @@ from .serializers import (
     AttendanceSessionSerializer,
 )
 import logging  # Add this at the top if not already present
+from catalogs.models import InstitutionSetting
 
 logger = logging.getLogger(__name__)
 def url_to_data_uri(url: str) -> str:
@@ -234,11 +236,42 @@ def _status_text_from_record(rec):
         return "EN PROCESO"
     return "LOGRADO" if g >= 11 else "EN PROCESO"
 
+def _file_to_data_uri(abs_path: str):
+    try:
+        if not abs_path or not os.path.exists(abs_path):
+            return None
+        mime, _ = mimetypes.guess_type(abs_path)
+        mime = mime or "application/octet-stream"
+        with open(abs_path, "rb") as f:
+            b64 = base64.b64encode(f.read()).decode("utf-8")
+        return f"data:{mime};base64,{b64}"
+    except Exception:
+        return None
+
+def _media_url_to_abs_path(media_url: str):
+    if not media_url:
+        return None
+    s = str(media_url).strip()
+    if "/media/" in s:
+        rel = s.split("/media/", 1)[1]
+    else:
+        rel = s.lstrip("/")
+    return os.path.join(str(settings.MEDIA_ROOT), rel)
+
 def _get_institution_media_datauris(request):
-    inst, _ = InstitutionSettings.objects.get_or_create(id=1)
-    logo_abs = _abs_media_url(request, inst.logo_url)
-    sig_abs = _abs_media_url(request, inst.signature_url)
-    return url_to_data_uri(logo_abs), url_to_data_uri(sig_abs)
+    inst, _ = InstitutionSetting.objects.get_or_create(pk=1)
+    data = inst.data or {}
+
+    logo_url = (data.get("logo_url") or "").strip()
+    sig_url = (data.get("signature_url") or "").strip()
+
+    logo_path = _media_url_to_abs_path(logo_url)
+    sig_path = _media_url_to_abs_path(sig_url)
+
+    return (
+        _file_to_data_uri(logo_path),
+        _file_to_data_uri(sig_path),
+    )
 
 # ───────────────────────── Helpers ─────────────────────────
 def _to_int(value, default=None):

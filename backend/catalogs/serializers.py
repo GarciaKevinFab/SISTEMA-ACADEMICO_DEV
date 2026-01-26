@@ -4,14 +4,12 @@ from django.db import transaction, IntegrityError
 from rest_framework import serializers
 from catalogs.models import Campus, Classroom
 from academic.models import Course
-
 from .models import (
     Period, Campus, Classroom, Teacher,
     InstitutionSetting, MediaAsset, ImportJob, BackupExport
 )
 
 User = get_user_model()
-
 
 # ------------------ Catálogos base ------------------
 class PeriodSerializer(serializers.ModelSerializer):
@@ -24,7 +22,6 @@ class CampusSerializer(serializers.ModelSerializer):
     class Meta:
         model = Campus
         fields = "__all__"
-
 
 class ClassroomSerializer(serializers.ModelSerializer):
     campus_id = serializers.PrimaryKeyRelatedField(
@@ -44,7 +41,6 @@ class ClassroomSerializer(serializers.ModelSerializer):
         data = super().to_representation(instance)
         data["campus_id"] = instance.campus_id
         return data
-
 
 # ------------------ Teacher ------------------
 class TeacherSerializer(serializers.ModelSerializer):
@@ -178,7 +174,6 @@ def create(self, validated_data):
 
     return teacher
 
-
 @transaction.atomic
 def update(self, instance, validated_data):
     # ✅ si llega courses, manejarlo aparte
@@ -212,13 +207,11 @@ def update(self, instance, validated_data):
 
     return instance
 
-
 # ------------------ InstitutionSetting ------------------
 class InstitutionSettingSerializer(serializers.ModelSerializer):
     class Meta:
         model = InstitutionSetting
         fields = ["id", "data"]
-
 
 # ------------------ MediaAsset ------------------
 class MediaAssetSerializer(serializers.ModelSerializer):
@@ -234,13 +227,11 @@ class MediaAssetSerializer(serializers.ModelSerializer):
         except Exception:
             return None
 
-
 # ------------------ ImportJob ------------------
 class ImportJobSerializer(serializers.ModelSerializer):
     class Meta:
         model = ImportJob
         fields = ["id", "type", "status", "mapping", "file", "result", "created_at"]
-
 
 # ------------------ BackupExport ------------------
 class BackupExportSerializer(serializers.ModelSerializer):
