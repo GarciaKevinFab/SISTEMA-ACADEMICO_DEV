@@ -894,58 +894,62 @@ def imports_start(request, type: str):
     if not file:
         return Response({"detail": "file requerido"}, status=400)
 
-    job = _retry_db(lambda: ImportJob.objects.create(type=type, file=file, mapping=mapping, status="RUNNING", result={}))
+    # ✅ Crea job con estado base
+    job = _retry_db(lambda: ImportJob.objects.create(
+        type=type,
+        file=file,
+        mapping=mapping,
+        status="RUNNING",
+        result={"progress": 0, "total": 0, "processed": 0, "errors": [], "imported": 0, "updated": 0}
+    ))
 
-    errors: List[str] = []
+    errors: List[dict] = []
     imported = 0
     updated = 0
     credentials: List[dict] = []
 
+    # -------------------------
+    # helpers progreso + errores
+    # -------------------------
+    def set_job_state(processed: int, total: int, message: str = ""):
+        p = int((processed / total) * 100) if total else 0
+        job.result = {
+            **(job.result or {}),
+            "progress": p,
+            "processed": processed,
+            "total": total,
+            "message": message,
+        }
+        job.save(update_fields=["result"])
+
+    def add_error(row, field, message):
+        errors.append({"row": row, "field": field, "message": message})
+
     try:
+        # =========================
+        # PLANS
+        # =========================
         if type == "plans":
             fname = (getattr(file, "name", "") or "").lower()
             if fname.endswith(".xls"):
-                return Response({"detail": "Convierte el plan de estudios a .xlsx (openpyxl no lee .xls)."}, status=400)
+                job.status = "FAILED"
+                job.result = {**(job.result or {}), "errors": [{"row": None, "field": "file", "message": "Convierte el plan a .xlsx (openpyxl no lee .xls)."}]}
+                job.save(update_fields=["status", "result"])
+                return Response({"job_id": job.id}, status=400)
+
             if not fname.endswith(".xlsx"):
-                return Response({"detail": "Para Plan de estudios sube un archivo .xlsx."}, status=400)
+                job.status = "FAILED"
+                job.result = {**(job.result or {}), "errors": [{"row": None, "field": "file", "message": "Para Plan de estudios sube un archivo .xlsx."}]}
+                job.save(update_fields=["status", "result"])
+                return Response({"job_id": job.id}, status=400)
 
-            created_careers = 0
-            created_plans = 0
-            created_courses = 0
-            created_links = 0
-
-            wb_tmp = load_workbook(file, read_only=True, keep_links=False)
-            sheet_names = list(wb_tmp.sheetnames)
-
-            for sh in sheet_names:
-                cn = _career_from_sheet_name(sh)
-                if not cn:
-                    continue
-
-                if not Career.objects.filter(name__iexact=cn).exists():
-                    Career.objects.create(name=cn)
-                    created_careers += 1
-
-                if AdmissionCareer is not None:
-                    if not AdmissionCareer.objects.filter(name__iexact=cn).exists():
-                        base = _slug_code(cn, 8)
-                        code = base
-                        k = 1
-                        while AdmissionCareer.objects.filter(code__iexact=code).exists():
-                            k += 1
-                            code = f"{base[:6]}{k:02d}"
-
-                        payload = {
-                            "name": cn,
-                            "code": code,
-                            "duration_semesters": 0,
-                            "vacancies": 0,
-                            "is_active": True,
-                        }
-                        try:
-                            AdmissionCareer.objects.create(**payload)
-                        except Exception:
-                            pass
+            # Prelectura (solo para contar hojas/carreras)
+            try:
+                wb_tmp = load_workbook(file, read_only=True, keep_links=False)
+                sheet_names = list(wb_tmp.sheetnames)
+            except Exception as e:
+                add_error(None, "file", f"No se pudo leer el .xlsx: {e}")
+                sheet_names = []
 
             try:
                 file.seek(0)
@@ -953,13 +957,25 @@ def imports_start(request, type: str):
                 pass
 
             plan_rows = _read_study_plan_xlsx(file)
-            if not plan_rows:
-                errors.append("No se detectaron filas del plan (plan_rows vacío). Revisa formato: header debe contener 'AREAS/ASIGNATURAS' y 'CRED.'")
+            total = len(plan_rows)
+            set_job_state(0, total, "Leyendo plan de estudios...")
 
-            # ✅ clave: si reimportas, no mezcles basura vieja
+            if not plan_rows:
+                add_error(None, "format", "No se detectaron filas del plan. Revisa que exista header 'AREAS/ASIGNATURAS' y 'CRED.'")
+
+            created_careers = 0
+            created_plans = 0
+            created_courses = 0
+            created_links = 0
+
             cleared_plans = set()
+            done = 0
 
             for row in plan_rows:
+                done += 1
+                if done % 25 == 0:
+                    set_job_state(done, total, "Procesando plan de estudios...")
+
                 r = row.get("__row__", "?")
                 career_name = (row.get("career_name") or "").strip()
                 semester = row.get("semester")
@@ -967,17 +983,21 @@ def imports_start(request, type: str):
                 credits = int(row.get("credits") or 0)
                 hours = int(row.get("hours") or 0)
 
-                if not career_name or not course_name or not semester:
-                    errors.append(f"Fila {r}: carrera/semester/curso inválidos")
+                if not career_name:
+                    add_error(r, "career_name", "Carrera/Programa vacío")
+                    continue
+                if not semester:
+                    add_error(r, "semester", "Semestre vacío o inválido")
+                    continue
+                if not course_name:
+                    add_error(r, "course_name", "Curso vacío")
                     continue
 
-                # Carrera
                 car = Career.objects.filter(name__iexact=career_name).first()
                 if not car:
                     car = Career.objects.create(name=career_name)
                     created_careers += 1
 
-                # Plan (por carrera)
                 plan, plan_created = Plan.objects.get_or_create(
                     career=car,
                     name=f"Plan {career_name}",
@@ -986,12 +1006,10 @@ def imports_start(request, type: str):
                 if plan_created:
                     created_plans += 1
 
-                # ✅ overwrite limpio del plan SOLO una vez
                 if plan.id not in cleared_plans:
                     PlanCourse.objects.filter(plan=plan).delete()
                     cleared_plans.add(plan.id)
 
-                # Curso
                 course = Course.objects.filter(name__iexact=course_name).first()
                 if not course:
                     base = _slug_code(course_name, 10)
@@ -1003,18 +1021,15 @@ def imports_start(request, type: str):
                     course = Course.objects.create(code=code, name=course_name, credits=max(0, credits))
                     created_courses += 1
                 else:
-                    # actualiza créditos si el excel manda valor
                     if int(credits) > 0 and int(course.credits or 0) != int(credits):
                         course.credits = int(credits)
                         course.save(update_fields=["credits"])
 
-                # ✅ PlanCourse: crear vínculo y FORZAR semestre/horas
                 pc, pc_created = PlanCourse.objects.get_or_create(
                     plan=plan,
                     course=course,
                     defaults={"semester": 1, "weekly_hours": 3, "type": "MANDATORY"},
                 )
-
                 pc.semester = max(1, int(semester))
                 pc.weekly_hours = max(0, int(hours)) if hours else int(pc.weekly_hours or 3)
                 pc.type = pc.type or "MANDATORY"
@@ -1025,7 +1040,7 @@ def imports_start(request, type: str):
 
                 imported += 1
 
-            # ✅ ajustar semestres reales del plan (opcional pero recomendado)
+            # Ajustar semestres reales
             for plan_id in list(cleared_plans):
                 pl = Plan.objects.filter(id=plan_id).first()
                 if not pl:
@@ -1035,31 +1050,36 @@ def imports_start(request, type: str):
                     pl.semesters = int(mx)
                     pl.save(update_fields=["semesters"])
 
-                imported += 1
+            set_job_state(total, total, "Finalizando importación de plan...")
 
-            if AdmissionCareer is not None:
-                for car in Career.objects.all():
-                    pl = Plan.objects.filter(career=car).first()
-                    if not pl:
-                        continue
-                    mx = (PlanCourse.objects.filter(plan=pl).aggregate(mx=models.Max("semester")).get("mx")) or 0
-                    if mx <= 0:
-                        continue
-                    adm = AdmissionCareer.objects.filter(name__iexact=car.name).first()
-                    if adm and int(getattr(adm, "duration_semesters", 0) or 0) != int(mx):
-                        adm.duration_semesters = int(mx)
-                        adm.save(update_fields=["duration_semesters"])
+            job.result = {
+                **(job.result or {}),
+                "imported": imported,
+                "updated": updated,
+                "errors": errors,
+                "stats": {
+                    "created_careers": created_careers,
+                    "created_plans": created_plans,
+                    "created_courses": created_courses,
+                    "created_links": created_links,
+                    "sheets": len(sheet_names),
+                },
+                "summary": {
+                    "ok": imported + updated,
+                    "failed": len(errors),
+                    "note": "Corrige las filas con error y vuelve a importar el archivo.",
+                },
+            }
 
-            job.result = {"stats": {
-                "created_careers": created_careers,
-                "created_plans": created_plans,
-                "created_courses": created_courses,
-                "created_links": created_links,
-            }}
-
+        # =========================
+        # STUDENTS / COURSES / GRADES
+        # =========================
         elif type in ("students", "courses", "grades"):
             rows = _read_rows(file, mapping)
+            total = len(rows)
+            set_job_state(0, total, "Leyendo archivo...")
 
+            # ------------- STUDENTS -------------
             if type == "students":
                 student_role, _ = _retry_db(lambda: Role.objects.get_or_create(name="STUDENT"))
                 user_fields = {f.name for f in User._meta.fields}
@@ -1067,11 +1087,7 @@ def imports_start(request, type: str):
                 def _email_field_info():
                     try:
                         f = User._meta.get_field("email")
-                        return {
-                            "exists": True,
-                            "unique": bool(getattr(f, "unique", False)),
-                            "null": bool(getattr(f, "null", False)),
-                        }
+                        return {"exists": True, "unique": bool(getattr(f, "unique", False)), "null": bool(getattr(f, "null", False))}
                     except Exception:
                         return {"exists": False, "unique": False, "null": False}
 
@@ -1079,12 +1095,11 @@ def imports_start(request, type: str):
 
                 def _safe_unique_email(username: str, email: str):
                     email = (email or "").strip().lower()
-
                     if email:
                         conflict = User.objects.filter(email__iexact=email).exists()
                         if not conflict:
                             return email
-                        errors.append(f"Email duplicado '{email}' (se usará dummy/NULL)")
+                        add_error(None, "email", f"Email duplicado '{email}' (se usará dummy/NULL)")
 
                     if EMAIL_INFO["null"]:
                         return None
@@ -1116,7 +1131,7 @@ def imports_start(request, type: str):
                         user = User.objects.filter(email__iexact=email_clean).first()
 
                     if user and Student.objects.filter(user_id=user.id).exists():
-                        errors.append(f"Fila {r}: user '{getattr(user,'username','')}' ya está enlazado a otro estudiante")
+                        add_error(r, "user", f"user '{getattr(user,'username','')}' ya enlazado a otro estudiante")
                         return None, None
 
                     temp_password = None
@@ -1144,7 +1159,7 @@ def imports_start(request, type: str):
                             if "email" in str(e).lower() and "email" in user_fields:
                                 user.email = _safe_unique_email(user.username, "")
                                 _retry_db(lambda: user.save())
-                                errors.append(f"Fila {r}: choque UNIQUE email (reintento ok)")
+                                add_error(r, "email", "Choque UNIQUE email (reintento ok)")
                             else:
                                 raise
                     else:
@@ -1167,7 +1182,7 @@ def imports_start(request, type: str):
                                 _retry_db(lambda: user.save())
                             except IntegrityError as e:
                                 if "email" in str(e).lower():
-                                    errors.append(f"Fila {r}: update email falló por duplicado (omitido)")
+                                    add_error(r, "email", "Update email falló por duplicado (omitido)")
                                 else:
                                     raise
 
@@ -1177,113 +1192,13 @@ def imports_start(request, type: str):
                     _retry_db(lambda: st.save(update_fields=["user"]))
                     return user, temp_password
 
-                BATCH = 200
-                buffer: List[Tuple[Any, dict]] = []
-
-                def flush_batch(batch_rows: List[Tuple[Any, dict]]):
-                    nonlocal imported, updated
-                    with transaction.atomic():
-                        for (r, payload) in batch_rows:
-                            num_documento = payload["num_documento"]
-                            nombres = payload["nombres"]
-                            ap_pat = payload["ap_pat"]
-                            ap_mat = payload["ap_mat"]
-                            sexo = payload["sexo"]
-                            fecha_nac = payload["fecha_nac"]
-
-                            region = payload["region"]
-                            provincia = payload["provincia"]
-                            distrito = payload["distrito"]
-
-                            codigo_modular = payload["codigo_modular"]
-                            nombre_institucion = payload["nombre_institucion"]
-                            gestion = payload["gestion"]
-                            tipo_inst = payload["tipo_inst"]
-
-                            programa_carrera = payload["programa_carrera"]
-                            ciclo = payload["ciclo"]
-                            turno = payload["turno"]
-                            seccion = payload["seccion"]
-                            periodo = payload["periodo"]
-                            lengua = payload["lengua"]
-                            discapacidad = payload["discapacidad"]
-                            tipo_discapacidad = payload["tipo_discapacidad"]
-
-                            email = payload.get("email", "")
-                            celular = payload.get("celular", "")
-
-                            if periodo:
-                                y, t = _parse_period_code(periodo)
-                                if y and t:
-                                    _retry_db(lambda: Period.objects.get_or_create(
-                                        code=periodo,
-                                        defaults={"year": y, "term": t, "label": periodo, "is_active": False},
-                                    ))
-
-                            plan_obj = None
-                            if programa_carrera:
-                                car, _ = _retry_db(lambda: Career.objects.get_or_create(name=programa_carrera))
-                                plan_obj, _ = _retry_db(lambda: Plan.objects.get_or_create(
-                                    career=car,
-                                    name=f"Plan {programa_carrera}",
-                                    defaults={"start_year": date.today().year, "semesters": 10},
-                                ))
-
-                            st, created = _retry_db(lambda: Student.objects.get_or_create(
-                                num_documento=num_documento,
-                                defaults={"nombres": nombres, "apellido_paterno": ap_pat, "apellido_materno": ap_mat},
-                            ))
-
-                            st.nombres = nombres
-                            st.apellido_paterno = ap_pat
-                            st.apellido_materno = ap_mat
-                            st.sexo = sexo
-                            if fecha_nac:
-                                st.fecha_nac = fecha_nac
-
-                            st.region = region
-                            st.provincia = provincia
-                            st.distrito = distrito
-                            st.codigo_modular = codigo_modular
-                            st.nombre_institucion = nombre_institucion
-                            st.gestion = gestion
-                            st.tipo = tipo_inst
-
-                            st.programa_carrera = programa_carrera
-                            st.ciclo = ciclo
-                            st.turno = turno
-                            st.seccion = seccion
-                            st.periodo = periodo
-                            st.lengua = lengua
-                            st.discapacidad = discapacidad
-                            st.tipo_discapacidad = tipo_discapacidad
-
-                            st.email = email
-                            st.celular = celular
-                            st.plan = plan_obj
-
-                            username = num_documento
-                            full_name = f"{nombres} {ap_pat} {ap_mat}".strip()
-                            user, temp_password = _ensure_user_for_student(st, username, email, full_name, r)
-
-                            _retry_db(lambda: st.save())
-
-                            if temp_password and user:
-                                credentials.append({
-                                    "row": r,
-                                    "num_documento": num_documento,
-                                    "username": getattr(user, "username", username),
-                                    "password": temp_password,
-                                })
-
-                            if created:
-                                imported += 1
-                            else:
-                                updated += 1
-
+                done = 0
                 for row in rows:
-                    r = row.get("__row__", "?")
+                    done += 1
+                    if done % 25 == 0:
+                        set_job_state(done, total, "Importando alumnos...")
 
+                    r = row.get("__row__", "?")
                     num_documento = str(row.get("num_documento", "")).strip()
                     nombres = str(row.get("nombres", "")).strip()
                     ap_pat = str(row.get("apellido_paterno", "")).strip()
@@ -1296,63 +1211,105 @@ def imports_start(request, type: str):
                     else:
                         fecha_nac = _parse_date_yyyy_mm_dd(str(fecha_val).strip())
 
-                    if not num_documento or not nombres:
-                        errors.append(f"Fila {r}: Num Documento y Nombres son requeridos")
+                    if not num_documento:
+                        add_error(r, "num_documento", "Num Documento es requerido")
+                        continue
+                    if not nombres:
+                        add_error(r, "nombres", "Nombres es requerido")
                         continue
 
-                    payload = {
-                        "num_documento": num_documento,
-                        "nombres": nombres,
-                        "ap_pat": ap_pat,
-                        "ap_mat": ap_mat,
-                        "sexo": sexo,
-                        "fecha_nac": fecha_nac,
-                        "region": str(row.get("region", "")).strip(),
-                        "provincia": str(row.get("provincia", "")).strip(),
-                        "distrito": str(row.get("distrito", "")).strip(),
-                        "codigo_modular": str(row.get("codigo_modular", "")).strip(),
-                        "nombre_institucion": str(row.get("nombre_institucion", "")).strip(),
-                        "gestion": str(row.get("gestion", "")).strip(),
-                        "tipo_inst": str(row.get("tipo", "")).strip(),
-                        "programa_carrera": str(row.get("programa_carrera", "")).strip(),
-                        "ciclo": _to_int(row.get("ciclo"), None),
-                        "turno": str(row.get("turno", "")).strip(),
-                        "seccion": str(row.get("seccion", "")).strip(),
-                        "periodo": str(row.get("periodo", "")).strip(),
-                        "lengua": str(row.get("lengua", "")).strip(),
-                        "discapacidad": str(row.get("discapacidad", "")).strip(),
-                        "tipo_discapacidad": str(row.get("tipo_discapacidad", "")).strip(),
-                        "email": str(row.get("email", "") or "").strip().lower(),
-                        "celular": str(row.get("celular", "") or "").strip(),
-                        "ap_pat": ap_pat,
-                        "ap_mat": ap_mat,
-                    }
+                    periodo = str(row.get("periodo", "")).strip()
+                    if periodo:
+                        y, t = _parse_period_code(periodo)
+                        if not (y and t):
+                            add_error(r, "periodo", "Periodo inválido (ej: 2026-I)")
+                        else:
+                            _retry_db(lambda: Period.objects.get_or_create(
+                                code=periodo,
+                                defaults={"year": y, "term": t, "label": periodo, "is_active": False},
+                            ))
 
-                    buffer.append((r, payload))
-                    if len(buffer) >= BATCH:
-                        flush_batch(buffer)
-                        buffer = []
+                    programa_carrera = str(row.get("programa_carrera", "")).strip()
+                    plan_obj = None
+                    if programa_carrera:
+                        car, _ = _retry_db(lambda: Career.objects.get_or_create(name=programa_carrera))
+                        plan_obj, _ = _retry_db(lambda: Plan.objects.get_or_create(
+                            career=car,
+                            name=f"Plan {programa_carrera}",
+                            defaults={"start_year": date.today().year, "semesters": 10},
+                        ))
 
-                if buffer:
-                    flush_batch(buffer)
-                    buffer = []
+                    st, created = _retry_db(lambda: Student.objects.get_or_create(
+                        num_documento=num_documento,
+                        defaults={"nombres": nombres, "apellido_paterno": ap_pat, "apellido_materno": ap_mat},
+                    ))
 
+                    st.nombres = nombres
+                    st.apellido_paterno = ap_pat
+                    st.apellido_materno = ap_mat
+                    st.sexo = sexo
+                    if fecha_nac:
+                        st.fecha_nac = fecha_nac
+
+                    st.region = str(row.get("region", "")).strip()
+                    st.provincia = str(row.get("provincia", "")).strip()
+                    st.distrito = str(row.get("distrito", "")).strip()
+                    st.codigo_modular = str(row.get("codigo_modular", "")).strip()
+                    st.nombre_institucion = str(row.get("nombre_institucion", "")).strip()
+                    st.gestion = str(row.get("gestion", "")).strip()
+                    st.tipo = str(row.get("tipo", "")).strip()
+
+                    st.programa_carrera = programa_carrera
+                    st.ciclo = _to_int(row.get("ciclo"), None)
+                    st.turno = str(row.get("turno", "")).strip()
+                    st.seccion = str(row.get("seccion", "")).strip()
+                    st.periodo = periodo
+                    st.lengua = str(row.get("lengua", "")).strip()
+                    st.discapacidad = str(row.get("discapacidad", "")).strip()
+                    st.tipo_discapacidad = str(row.get("tipo_discapacidad", "")).strip()
+
+                    st.email = str(row.get("email", "") or "").strip().lower()
+                    st.celular = str(row.get("celular", "") or "").strip()
+                    st.plan = plan_obj
+
+                    username = num_documento
+                    full_name = f"{nombres} {ap_pat} {ap_mat}".strip()
+                    user, temp_password = _ensure_user_for_student(st, username, st.email, full_name, r)
+                    _retry_db(lambda: st.save())
+
+                    if temp_password and user:
+                        credentials.append({"row": r, "num_documento": num_documento, "username": getattr(user, "username", username), "password": temp_password})
+
+                    if created:
+                        imported += 1
+                    else:
+                        updated += 1
+
+                set_job_state(total, total, "Finalizando alumnos...")
+
+            # ------------- COURSES -------------
             elif type == "courses":
+                done = 0
                 for row in rows:
+                    done += 1
+                    if done % 25 == 0:
+                        set_job_state(done, total, "Importando cursos...")
+
                     r = row.get("__row__", "?")
                     code = str(row.get("code", "")).strip()
                     name = str(row.get("name", "")).strip()
+
+                    if not code:
+                        add_error(r, "code", "code requerido")
+                        continue
+                    if not name:
+                        add_error(r, "name", "name requerido")
+                        continue
+
                     credits = _to_int(row.get("credits"), None)
                     hours = _to_int(row.get("hours", None))
 
-                    if not code or not name:
-                        errors.append(f"Fila {r}: code y name requeridos")
-                        continue
-
-                    course, _ = Course.objects.get_or_create(
-                        code=code,
-                        defaults={"name": name, "credits": max(0, credits or 0)},
-                    )
+                    course, _ = Course.objects.get_or_create(code=code, defaults={"name": name, "credits": max(0, credits or 0)})
                     course.name = name
                     if credits is not None:
                         course.credits = max(0, int(credits))
@@ -1365,55 +1322,78 @@ def imports_start(request, type: str):
                     if plan_id and semester:
                         plan = Plan.objects.filter(id=plan_id).first()
                         if not plan:
-                            errors.append(f"Fila {r}: plan_id {plan_id} no existe")
-                            continue
-
-                        if ctype in ("OBLIGATORIO", "MANDATORY", "M"):
-                            type_db = "MANDATORY"
-                        elif ctype in ("ELECTIVO", "ELECTIVE", "E"):
-                            type_db = "ELECTIVE"
+                            add_error(r, "plan_id", f"plan_id {plan_id} no existe")
                         else:
-                            type_db = "MANDATORY"
+                            if ctype in ("OBLIGATORIO", "MANDATORY", "M"):
+                                type_db = "MANDATORY"
+                            elif ctype in ("ELECTIVO", "ELECTIVE", "E"):
+                                type_db = "ELECTIVE"
+                            else:
+                                type_db = "MANDATORY"
 
-                        pc, pc_created = PlanCourse.objects.get_or_create(
-                            plan=plan,
-                            course=course,
-                            defaults={"semester": max(1, int(semester)), "weekly_hours": max(1, int(hours or 3)), "type": type_db},
-                        )
-                        if not pc_created:
-                            if int(pc.semester or 0) != max(1, int(semester)):
+                            pc, pc_created = PlanCourse.objects.get_or_create(
+                                plan=plan,
+                                course=course,
+                                defaults={"semester": max(1, int(semester)), "weekly_hours": max(1, int(hours or 3)), "type": type_db},
+                            )
+                            if not pc_created:
                                 pc.semester = max(1, int(semester))
-                            pc.weekly_hours = max(1, int(hours or pc.weekly_hours or 3))
-                            pc.type = type_db
-                            pc.save()
+                                pc.weekly_hours = max(1, int(hours or pc.weekly_hours or 3))
+                                pc.type = type_db
+                                pc.save()
 
                     imported += 1
 
+                set_job_state(total, total, "Finalizando cursos...")
+
+            # ------------- GRADES -------------
             elif type == "grades":
                 if AcademicGradeRecord is None:
-                    return Response({"detail": "AcademicGradeRecord no está implementado. Agrega el modelo y migra."}, status=400)
+                    job.status = "FAILED"
+                    job.result = {**(job.result or {}), "errors": [{"row": None, "field": "model", "message": "AcademicGradeRecord no existe. Agrégalo y migra."}]}
+                    job.save(update_fields=["status", "result"])
+                    return Response({"job_id": job.id}, status=400)
 
                 cal_rows = _read_calificaciones_xlsx(file)
+                total = len(cal_rows)
+                set_job_state(0, total, "Leyendo calificaciones...")
 
+                done = 0
                 for row in cal_rows:
+                    done += 1
+                    if done % 25 == 0:
+                        set_job_state(done, total, "Importando notas...")
+
                     r = row.get("__row__", "?")
-                    doc = row["doc"]
-                    term = row["periodo"]
+                    doc = row.get("doc")
+                    term = row.get("periodo")
                     ciclo = row.get("ciclo")
-                    course_name = row["curso"]
-                    final = row["nota"]
+                    course_name = row.get("curso")
+                    final = row.get("nota")
+
+                    if not doc:
+                        add_error(r, "student_document", "Documento del alumno vacío")
+                        continue
+                    if not term:
+                        add_error(r, "term", "Periodo vacío (ej: 2026-I)")
+                        continue
+                    if not course_name:
+                        add_error(r, "course", "Curso vacío")
+                        continue
+                    if final is None:
+                        add_error(r, "final_grade", "Nota final vacía")
+                        continue
 
                     st = Student.objects.filter(num_documento=doc).first()
                     if not st:
-                        errors.append(f"Fila {r}: no existe alumno con Num Documento {doc}")
+                        add_error(r, "student_document", f"No existe alumno con documento {doc}")
                         continue
 
                     y, t = _parse_period_code(term)
                     if y and t:
-                        Period.objects.get_or_create(
-                            code=term,
-                            defaults={"year": y, "term": t, "label": term, "is_active": False},
-                        )
+                        Period.objects.get_or_create(code=term, defaults={"year": y, "term": t, "label": term, "is_active": False})
+                    else:
+                        add_error(r, "term", f"Periodo inválido '{term}' (ej: 2026-I)")
 
                     course = Course.objects.filter(name__iexact=course_name).first()
                     if not course:
@@ -1444,30 +1424,69 @@ def imports_start(request, type: str):
 
                     imported += 1
 
-        else:
-            return Response({"detail": "Tipo inválido"}, status=400)
+                set_job_state(total, total, "Finalizando notas...")
 
-        job.status = "COMPLETED"
-        if not isinstance(job.result, dict) or not job.result:
-            job.result = {}
+        else:
+            job.status = "FAILED"
+            job.result = {**(job.result or {}), "errors": [{"row": None, "field": "type", "message": "Tipo inválido"}]}
+            job.save(update_fields=["status", "result"])
+            return Response({"job_id": job.id}, status=400)
+
+        # ✅ Estado final (si hubo errores, igual dejamos resumen)
+        job.status = "COMPLETED" if len(errors) == 0 else "FAILED"
         job.result = {
-            **job.result,
+            **(job.result or {}),
             "imported": imported,
             "updated": updated,
             "errors": errors,
             "credentials": credentials[:300],
+            "summary": {
+                "ok": imported + updated,
+                "failed": len(errors),
+                "note": "Corrige los errores por fila y vuelve a importar el archivo.",
+            }
         }
         job.save(update_fields=["status", "result"])
         return Response({"job_id": job.id})
 
     except Exception as e:
         job.status = "FAILED"
-        job.result = {"imported": imported, "updated": updated, "errors": errors + [str(e)]}
+        job.result = {
+            **(job.result or {}),
+            "errors": errors + [{"row": None, "field": "exception", "message": str(e)}],
+            "imported": imported,
+            "updated": updated,
+        }
         try:
             job.save(update_fields=["status", "result"])
         except Exception:
             pass
         return Response({"job_id": job.id, "detail": "Import failed", "error": str(e)}, status=500)
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def imports_status(request, jobId: int):
+    try:
+        job = ImportJob.objects.get(pk=jobId)
+    except ImportJob.DoesNotExist:
+        return Response({"detail": "job not found"}, status=404)
+
+    result = job.result if isinstance(job.result, dict) else {}
+    return Response({
+        "id": job.id,
+        "state": job.status,
+        "progress": int(result.get("progress") or 0),
+        "processed": int(result.get("processed") or 0),
+        "total": int(result.get("total") or 0),
+        "message": result.get("message") or "",
+        "errors": result.get("errors") or [],
+        "imported": result.get("imported", 0),
+        "updated": result.get("updated", 0),
+        "credentials": result.get("credentials") or [],
+        "summary": result.get("summary") or {},
+        "stats": result.get("stats") or {},
+    })
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])

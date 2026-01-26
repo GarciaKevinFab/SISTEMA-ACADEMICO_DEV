@@ -120,12 +120,32 @@ function filenameFromContentDisposition(cd, fallback) {
 function normalizeUbigeoList(list) {
     const arr = list?.items ?? list ?? [];
     if (!Array.isArray(arr)) return [];
-    return arr.map((x) => {
-        if (typeof x === "string") return { code: x, name: x };
-        const code = String(x?.code ?? x?.id ?? x?.value ?? x?.name ?? "");
-        const name = String(x?.name ?? x?.label ?? x?.value ?? x?.code ?? "");
-        return { code, name };
-    }).filter((x) => x.code);
+    return arr
+        .map((x) => {
+            if (typeof x === "string") return { code: x, name: x };
+            const code = String(x?.code ?? x?.id ?? x?.value ?? x?.name ?? "");
+            const name = String(x?.name ?? x?.label ?? x?.value ?? x?.code ?? "");
+            return { code, name };
+        })
+        .filter((x) => x.code);
+}
+
+function safeNum(n, fallback = 0) {
+    const x = Number(n);
+    return Number.isFinite(x) ? x : fallback;
+}
+
+function normalizeImportErrors(errors) {
+    if (!Array.isArray(errors)) return [];
+    // backend nuevo: [{row, field, message}] | backend viejo: ["Fila 2: ..."]
+    return errors.map((e) => {
+        if (typeof e === "string") return { row: "-", field: "-", message: e };
+        return {
+            row: e?.row ?? "-",
+            field: e?.field ?? "-",
+            message: e?.message ?? JSON.stringify(e),
+        };
+    });
 }
 
 const Field = ({ label, children }) => (
@@ -1732,38 +1752,52 @@ const InstitutionSection = () => {
         </Section>
     );
 };
-
 // ===============================================================
-// Importadores Excel/CSV (con barra de progreso y advertencia)
+// Importadores Excel/CSV (IMPLEMENTADO)
 // ===============================================================
-
 const ImportersTab = () => {
     const [type, setType] = useState("students");
     const [file, setFile] = useState(null);
+
     const [job, setJob] = useState(null);
     const [status, setStatus] = useState(null);
+
     const [poll, setPoll] = useState(null);
     const [isImporting, setIsImporting] = useState(false);
+
+    const isProcessing = isImporting || !!job;
+
+    const helpText = useMemo(() => {
+        if (type === "students")
+            return "Usa la plantilla de alumnos. Campos obligatorios: Num Documento, Nombres. Verifica Periodo (ej. 2026-I) y ubigeo.";
+        if (type === "grades")
+            return "Antes de importar notas: los alumnos deben existir. Verifica Periodo (ej. 2026-I) y que el documento exista.";
+        if (type === "plans")
+            return "El plan debe ser .xlsx y mantener el formato (AREAS/ASIGNATURAS, CRED.). Una hoja por carrera.";
+        return "Usa la plantilla oficial para evitar errores.";
+    }, [type]);
+
+    // ✅ Evita que cierre/recargue mientras importa
+    useEffect(() => {
+        const handler = (e) => {
+            if (!isProcessing) return;
+            e.preventDefault();
+            e.returnValue = "";
+        };
+        window.addEventListener("beforeunload", handler);
+        return () => window.removeEventListener("beforeunload", handler);
+    }, [isProcessing]);
 
     // Limpieza automática del polling al desmontar
     useEffect(() => {
         return () => {
-            if (poll) {
-                clearInterval(poll);
-            }
+            if (poll) clearInterval(poll);
         };
     }, [poll]);
 
     const start = async () => {
-        if (!file) {
-            toast.error("Debes seleccionar un archivo primero");
-            return;
-        }
-
-        if (isImporting) {
-            toast.info("Ya hay una importación en curso");
-            return;
-        }
+        if (!file) return toast.error("Debes seleccionar un archivo primero");
+        if (isImporting) return toast.info("Ya hay una importación en curso");
 
         setIsImporting(true);
         setStatus(null);
@@ -1772,36 +1806,32 @@ const ImportersTab = () => {
         try {
             const res = await Imports.start(type, file);
             const jobId = res?.job_id || res?.id || res?.task_id;
-
-            if (!jobId) {
-                throw new Error("No se recibió identificador de tarea");
-            }
+            if (!jobId) throw new Error("No se recibió identificador de tarea");
 
             setJob(jobId);
             toast.success("Importación iniciada");
 
-            // Polling cada ~1.8 segundos
             const timer = setInterval(async () => {
                 try {
                     const st = await Imports.status(jobId);
                     setStatus(st);
 
-                    if (st?.state === "COMPLETED" || st?.state === "FAILED" || st?.state === "ERROR") {
+                    const state = st?.state;
+                    if (state === "COMPLETED" || state === "FAILED" || state === "ERROR") {
                         clearInterval(timer);
                         setPoll(null);
                         setIsImporting(false);
 
-                        if (st.state === "COMPLETED") {
-                            toast.success("¡Importación completada con éxito!");
-                        } else {
-                            toast.error("La importación terminó con error");
-                        }
+                        const errCount = (st?.errors?.length ?? 0);
+                        if (state === "COMPLETED" && errCount === 0) toast.success("¡Importación completada con éxito!");
+                        else if (state === "COMPLETED" && errCount > 0) toast.error(`Importación completada con observaciones (${errCount} errores).`);
+                        else toast.error("La importación terminó con error");
                     }
                 } catch (err) {
+                    // no cortamos polling por fallos puntuales
                     console.error("Error al consultar estado:", err);
-                    // No detenemos el polling por errores de consulta
                 }
-            }, 1800);
+            }, 1200);
 
             setPoll(timer);
         } catch (e) {
@@ -1827,9 +1857,7 @@ const ImportersTab = () => {
             const cd = res.headers?.["content-disposition"];
             const fallback = `${type}_template.xlsx`;
             const filename = filenameFromContentDisposition(cd, fallback);
-            const blob = new Blob([res.data], {
-                type: res.headers?.["content-type"] || "application/octet-stream",
-            });
+            const blob = new Blob([res.data], { type: res.headers?.["content-type"] || "application/octet-stream" });
             saveBlobAsFile(blob, filename);
             toast.success("Plantilla descargada");
         } catch (e) {
@@ -1837,8 +1865,20 @@ const ImportersTab = () => {
         }
     };
 
-    const progress = status?.progress ?? 0;
-    const isProcessing = isImporting || !!job;
+    const progress = safeNum(status?.progress, 0);
+    const processed = safeNum(status?.processed, 0);
+    const total = safeNum(status?.total, 0);
+    const imported = safeNum(status?.imported, 0);
+    const updated = safeNum(status?.updated, 0);
+    const errors = useMemo(() => normalizeImportErrors(status?.errors), [status?.errors]);
+
+    const stateLabel = status?.state || (isProcessing ? "EN PROCESO" : "—");
+    const stateClass =
+        stateLabel === "COMPLETED"
+            ? "bg-green-100 text-green-700"
+            : stateLabel === "FAILED" || stateLabel === "ERROR"
+                ? "bg-red-100 text-red-700"
+                : "bg-blue-100 text-blue-700";
 
     return (
         <div className="space-y-6 pb-24 sm:pb-6">
@@ -1849,9 +1889,23 @@ const ImportersTab = () => {
                         <span>Importadores Excel/CSV</span>
                     </div>
                 }
-                desc="Carga masiva de planes de estudios, alumnos, notas históricas y otros catálogos."
+                desc="Carga masiva de planes de estudios, alumnos y notas históricas."
             >
-                {/* Advertencia visible durante la importación */}
+                {/* ✅ INSTRUCCIONES */}
+                <div className="mb-6 p-5 bg-slate-50 border border-slate-200 rounded-2xl">
+                    <div className="flex items-start gap-4">
+                        <AlertCircle className="h-6 w-6 text-slate-500 mt-0.5 shrink-0" />
+                        <div className="space-y-1">
+                            <h3 className="font-semibold text-slate-800">Instrucciones</h3>
+                            <p className="text-sm text-slate-600">{helpText}</p>
+                            <p className="text-xs text-slate-500">
+                                Consejo: descarga la plantilla y no cambies nombres de columnas.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                {/* ✅ ADVERTENCIA ANTI-CIERRE */}
                 {isProcessing && (
                     <div className="mb-6 p-5 bg-amber-50 border border-amber-300 rounded-2xl shadow-sm">
                         <div className="flex items-start gap-4">
@@ -1861,8 +1915,7 @@ const ImportersTab = () => {
                                     No cambie de pestaña ni cierre esta ventana
                                 </h3>
                                 <p className="text-sm text-amber-700">
-                                    La importación está en proceso. Cambiar de sección o cerrar la página
-                                    impedirá que vea el progreso y el resultado final en tiempo real.
+                                    La importación está en proceso. Si cierras o recargas, perderás el seguimiento en tiempo real.
                                 </p>
                             </div>
                         </div>
@@ -1871,11 +1924,7 @@ const ImportersTab = () => {
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
                     <Field label="Tipo de importación">
-                        <Select
-                            value={type}
-                            onValueChange={setType}
-                            disabled={isProcessing}
-                        >
+                        <Select value={type} onValueChange={setType} disabled={isProcessing}>
                             <SelectTrigger className="rounded-xl">
                                 <SelectValue placeholder="Seleccione tipo" />
                             </SelectTrigger>
@@ -1883,7 +1932,6 @@ const ImportersTab = () => {
                                 <SelectItem value="plans">Plan de estudios</SelectItem>
                                 <SelectItem value="students">Alumnos</SelectItem>
                                 <SelectItem value="grades">Notas históricas</SelectItem>
-                                {/* Puedes agregar más tipos si tu backend los soporta */}
                             </SelectContent>
                         </Select>
                     </Field>
@@ -1948,59 +1996,106 @@ const ImportersTab = () => {
                     </Button>
                 </div>
 
-                {/* Barra de progreso y estado detallado */}
+                {/* ✅ PROGRESO + RESUMEN + ERRORES */}
                 {isProcessing && (
                     <Card className="mt-8 rounded-2xl border-blue-100 shadow-sm overflow-hidden">
                         <CardHeader className="bg-blue-50/50 pb-3">
                             <CardTitle className="text-base flex items-center justify-between">
                                 <span>Progreso de la importación</span>
-                                <Badge
-                                    variant="outline"
-                                    className={
-                                        status?.state === "COMPLETED" ? "bg-green-100 text-green-700" :
-                                            status?.state === "FAILED" || status?.state === "ERROR" ? "bg-red-100 text-red-700" :
-                                                "bg-blue-100 text-blue-700"
-                                    }
-                                >
-                                    {status?.state || "EN PROCESO"}
+                                <Badge variant="outline" className={stateClass}>
+                                    {stateLabel}
                                 </Badge>
                             </CardTitle>
                         </CardHeader>
+
                         <CardContent className="pt-5 space-y-5">
                             <div>
                                 <div className="flex justify-between text-sm mb-1.5">
                                     <span className="font-medium">Progreso</span>
                                     <span>{Math.round(progress)}%</span>
                                 </div>
+
                                 <div className="h-3 bg-slate-100 rounded-full overflow-hidden">
                                     <div
                                         className="h-full bg-gradient-to-r from-blue-500 to-blue-600 rounded-full transition-all duration-700 ease-out"
-                                        style={{ width: `${progress}%` }}
+                                        style={{ width: `${Math.min(100, Math.max(0, progress))}%` }}
                                     />
                                 </div>
+
                                 <div className="flex justify-between text-xs text-slate-500 mt-1.5">
                                     <span>Job ID: {job || "—"}</span>
-                                    <span>{status?.processed || 0} / {status?.total || "?"} registros</span>
+                                    <span>{processed} / {total || "?"} registros</span>
                                 </div>
                             </div>
 
-                            {status?.message && (
-                                <p className="text-sm text-slate-600 bg-slate-50 p-3 rounded-lg border border-slate-100">
-                                    {status.message}
+                            {/* Resumen */}
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                <div className="p-3 rounded-lg bg-slate-50 border border-slate-200">
+                                    <div className="text-slate-500 text-xs">Importados</div>
+                                    <div className="text-lg font-bold text-slate-800">{imported}</div>
+                                </div>
+                                <div className="p-3 rounded-lg bg-slate-50 border border-slate-200">
+                                    <div className="text-slate-500 text-xs">Actualizados</div>
+                                    <div className="text-lg font-bold text-slate-800">{updated}</div>
+                                </div>
+                                <div className="p-3 rounded-lg bg-red-50 border border-red-100">
+                                    <div className="text-red-700 text-xs">Fallidos</div>
+                                    <div className="text-lg font-bold text-red-800">{errors.length}</div>
+                                </div>
+                            </div>
+
+                            {/* Mensaje del backend (si existe) */}
+                            {status?.summary?.note && (
+                                <p className="text-sm text-slate-700 bg-slate-50 p-3 rounded-lg border border-slate-100">
+                                    {status.summary.note}
                                 </p>
                             )}
 
-                            {Array.isArray(status?.errors) && status.errors.length > 0 && (
+                            {/* Errores en tabla */}
+                            {errors.length > 0 && (
                                 <div className="p-4 bg-red-50 border border-red-100 rounded-lg text-sm text-red-800">
                                     <p className="font-medium mb-2 flex items-center gap-2">
                                         <AlertCircle className="h-4 w-4" />
-                                        Errores encontrados:
+                                        Errores por fila ({errors.length})
                                     </p>
-                                    <ul className="list-disc pl-5 space-y-1 max-h-48 overflow-y-auto">
-                                        {status.errors.map((err, index) => (
-                                            <li key={index}>{err}</li>
-                                        ))}
-                                    </ul>
+
+                                    <div className="overflow-x-auto max-h-56 overflow-y-auto">
+                                        <table className="w-full text-xs">
+                                            <thead className="text-left text-red-900/70">
+                                                <tr>
+                                                    <th className="py-2 pr-3">Fila</th>
+                                                    <th className="py-2 pr-3">Campo</th>
+                                                    <th className="py-2">Detalle</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-red-100">
+                                                {errors.slice(0, 200).map((e, idx) => (
+                                                    <tr key={idx}>
+                                                        <td className="py-2 pr-3 font-mono">{e.row}</td>
+                                                        <td className="py-2 pr-3">{e.field}</td>
+                                                        <td className="py-2">{e.message}</td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+
+                                    {errors.length > 200 && (
+                                        <p className="text-[11px] mt-2 text-red-700/80">
+                                            Mostrando 200 errores. Corrige el archivo y vuelve a importar.
+                                        </p>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* Cuando está completado sin errores */}
+                            {stateLabel === "COMPLETED" && errors.length === 0 && (
+                                <div className="p-4 bg-green-50 border border-green-100 rounded-lg text-sm text-green-800 flex items-start gap-2">
+                                    <span className="mt-0.5">✅</span>
+                                    <div>
+                                        <div className="font-semibold">Importación exitosa</div>
+                                        <div className="text-xs text-green-700">Ya puedes continuar con el sistema.</div>
+                                    </div>
                                 </div>
                             )}
                         </CardContent>
@@ -2010,7 +2105,6 @@ const ImportersTab = () => {
         </div>
     );
 };
-
 // ===============================================================
 // Respaldo / Exportación
 // ===============================================================
