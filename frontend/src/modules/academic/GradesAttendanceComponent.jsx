@@ -330,7 +330,7 @@ export default function GradesAttendanceComponent() {
   // ✅ FETCH FUNCTIONS
   const fetchTeacherSections = async () => {
     try {
-      const data = await Teacher.sections(user.id);
+      const data = await Teacher.sectionsMe();
       const secs = data?.sections || [];
       setSections(secs);
       setSelectedSection((prev) => {

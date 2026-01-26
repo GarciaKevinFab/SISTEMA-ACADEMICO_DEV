@@ -348,6 +348,7 @@ export const Teacher = {
         const arr = pickFirstArray(data, ["sections", "items", "results"]);
         return { sections: arr };
     },
+    sectionsMe: () => api.get("/teachers/me/sections").then(r => r.data),
 };
 
 export const SectionStudents = {

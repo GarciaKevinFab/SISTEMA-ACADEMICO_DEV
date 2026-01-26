@@ -48,6 +48,7 @@ from .serializers import (
 )
 import logging  # Add this at the top if not already present
 from catalogs.models import InstitutionSetting
+from catalogs.models import Teacher as CatalogTeacher
 
 logger = logging.getLogger(__name__)
 def url_to_data_uri(url: str) -> str:
@@ -1591,6 +1592,55 @@ class TeacherSectionsView(APIView):
                 "plan_course_id": s.plan_course_id,
                 "room_name": s.classroom.code if s.classroom else "",
             })
+        return ok(sections=sections)
+    
+class TeacherSectionsMeView(APIView):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        """
+        Devuelve SOLO secciones del docente basadas en:
+        - catalogs.Teacher.courses (cursos asignados)
+        - Section.teacher (docente asignado a la sección)
+        """
+        # 1) docente académico (el que usan las secciones)
+        teacher = resolve_teacher(request.user.id)
+        if not teacher:
+            return ok(sections=[])
+
+        # 2) docente de catálogo (donde asignas courses)
+        cat = CatalogTeacher.objects.filter(user=request.user).prefetch_related("courses").first()
+        if not cat:
+            return ok(sections=[])
+
+        course_ids = list(cat.courses.values_list("id", flat=True))
+        if not course_ids:
+            return ok(sections=[])
+
+        # 3) traer secciones SOLO del docente y SOLO de cursos asignados
+        qs = (
+            Section.objects
+            .select_related("plan_course__course", "teacher__user", "classroom")
+            .prefetch_related("schedule_slots")
+            .filter(teacher=teacher, plan_course__course_id__in=course_ids)
+            .order_by("-id")
+        )
+
+        sections = []
+        for s in qs:
+            crs = s.plan_course.course
+            sections.append({
+                "id": s.id,
+                "course_name": crs.name,
+                "course_code": crs.code,
+                "section_code": s.label,
+                "label": s.label,
+                "period": s.period,
+                "plan_course_id": s.plan_course_id,
+                "room_name": s.classroom.code if s.classroom else "",
+            })
+
         return ok(sections=sections)
 class SectionStudentsView(APIView):
     authentication_classes = [JWTAuthentication]

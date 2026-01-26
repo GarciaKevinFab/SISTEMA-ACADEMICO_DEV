@@ -31,7 +31,7 @@ from .views import (
     ProcessesCreateView, ProcessesListView, ProcessesMineView, ProcessDetailView,
     ProcessStatusView, ProcessNotifyView, ProcessFilesView, ProcessFileDeleteView,
 
-    AcademicCareersListView,CoursesListView,
+    AcademicCareersListView,CoursesListView,TeacherSectionsMeView,
 )
 
 router = DefaultRouter(trailing_slash=False)
@@ -127,6 +127,7 @@ urlpatterns = [
     path("reports/occupancy.xlsx", AcademicReportOccupancyXlsxView.as_view()),
 
     # Docente / Notas
+    path("teachers/me/sections", TeacherSectionsMeView.as_view()),
     path("teachers/<int:teacher_user_id>/sections", TeacherSectionsView.as_view()),
     path("sections/<int:section_id>/students", SectionStudentsView.as_view()),
     path("sections/<int:section_id>/grades", SectionGradesView.as_view()),
