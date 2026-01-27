@@ -13,6 +13,7 @@ import {
     Users,
     Info,
     ChevronRight,
+     KeyRound, Lock, CheckCircle2, Check, X
 } from "lucide-react";
 
 import {
@@ -346,80 +347,163 @@ export default function StudentModule() {
                         </div>
                     </CardHeader>
 
-                    <CardContent className="space-y-5">
-                        {/* ✅ BLOQUE: CAMBIO DE CONTRASEÑA TEMPORAL */}
-                        {mustChangePassword && (
-                            <div className="rounded-2xl border border-amber-200 bg-amber-50/60 dark:bg-amber-900/10 p-5">
-                                <div className="flex items-start gap-3">
-                                    <ShieldAlert className="h-5 w-5 text-amber-600 mt-0.5" />
-                                    <div className="min-w-0">
-                                        <p className="font-semibold text-amber-800 dark:text-amber-200">
-                                            Primer ingreso: cambia tu contraseña
-                                        </p>
-                                        <p className="text-sm text-amber-700/80 dark:text-amber-200/70">
-                                            Estás usando una contraseña temporal. Cámbiala para continuar.
-                                        </p>
-                                    </div>
-                                </div>
+                  <CardContent className="space-y-6">
+    {mustChangePassword && (
+        <div className="rounded-2xl border border-red-200 bg-red-50/60 dark:bg-red-900/10 p-6 shadow-sm">
+            
+            {/* Header de la Alerta */}
+            <div className="flex items-start gap-4 mb-6">
+                <div className="p-2 bg-red-100 dark:bg-red-900/30 rounded-full shrink-0">
+                    <ShieldAlert className="h-6 w-6 text-red-600 dark:text-red-400" />
+                </div>
+                <div className="min-w-0 space-y-1">
+                    <h3 className="font-bold text-red-900 dark:text-red-100 text-lg">
+                        Acción Requerida: Seguridad de la cuenta
+                    </h3>
+                    <p className="text-sm text-red-800/80 dark:text-red-200/70 leading-relaxed">
+                        Estás utilizando una credencial temporal. Por seguridad, debes establecer una contraseña nueva ahora mismo.
+                    </p>
+                </div>
+            </div>
 
-                                <form onSubmit={onChangeTempPassword} className="mt-4 grid gap-3">
-                                    <div>
-                                        <Label>Contraseña temporal</Label>
-                                        <Input
-                                            type="password"
-                                            className="rounded-xl"
-                                            value={pwd.current_password}
-                                            onChange={(e) =>
-                                                setPwd((s) => ({ ...s, current_password: e.target.value }))
-                                            }
-                                            required
-                                            disabled={pwdSaving}
-                                        />
-                                    </div>
+            <form onSubmit={onChangeTempPassword} className="space-y-5">
+                
+                {/* Input 1: Contraseña Actual */}
+                <div className="space-y-2">
+                    <Label className="text-red-900/80 dark:text-red-200 font-medium ml-1">
+                        Contraseña temporal
+                    </Label>
+                    <div className="relative group transition-all">
+                        {!pwd.current_password && (
+                            <KeyRound className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-red-400 pointer-events-none" />
+                        )}
+                        <Input
+                            type="password"
+                            className={`rounded-xl border-red-200 bg-white dark:bg-black/20 focus-visible:ring-red-500 focus-visible:border-red-500 transition-all ${
+                                !pwd.current_password ? "pl-14" : "pl-4"
+                            }`}
+                            value={pwd.current_password}
+                            onChange={(e) =>
+                                setPwd((s) => ({ ...s, current_password: e.target.value }))
+                            }
+                            placeholder="Ingresa la actual..."
+                            required
+                            disabled={pwdSaving}
+                        />
+                    </div>
+                </div>
 
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                        <div>
-                                            <Label>Nueva contraseña</Label>
-                                            <Input
-                                                type="password"
-                                                className="rounded-xl"
-                                                value={pwd.new_password}
-                                                onChange={(e) =>
-                                                    setPwd((s) => ({ ...s, new_password: e.target.value }))
-                                                }
-                                                required
-                                                disabled={pwdSaving}
-                                            />
-                                            <p className="text-[11px] text-amber-700/70 mt-1">
-                                                Tip: mínimo 8 caracteres (ideal: mayúscula, número y símbolo).
-                                            </p>
-                                        </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    
+                    {/* Input 2: Nueva Contraseña + BARRA DE FUERZA */}
+                    <div className="space-y-2">
+                        <Label className="text-red-900/80 dark:text-red-200 font-medium ml-1">
+                            Nueva contraseña
+                        </Label>
+                        <div className="relative group">
+                            {!pwd.new_password && (
+                                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-red-400 pointer-events-none" />
+                            )}
+                            <Input
+                                type="password"
+                                className={`rounded-xl border-red-200 bg-white dark:bg-black/20 focus-visible:ring-red-500 focus-visible:border-red-500 transition-all ${
+                                    !pwd.new_password ? "pl-14" : "pl-4"
+                                }`}
+                                value={pwd.new_password}
+                                onChange={(e) =>
+                                    setPwd((s) => ({ ...s, new_password: e.target.value }))
+                                }
+                                placeholder="Crea una nueva..."
+                                required
+                                disabled={pwdSaving}
+                            />
+                        </div>
 
-                                        <div>
-                                            <Label>Confirmar nueva contraseña</Label>
-                                            <Input
-                                                type="password"
-                                                className="rounded-xl"
-                                                value={pwd.confirm_password}
-                                                onChange={(e) =>
-                                                    setPwd((s) => ({ ...s, confirm_password: e.target.value }))
-                                                }
-                                                required
-                                                disabled={pwdSaving}
-                                            />
-                                        </div>
-                                    </div>
-
-                                    <div className="flex justify-end">
-                                        <Button
-                                            className="rounded-xl bg-gradient-to-r from-amber-600 to-orange-600"
-                                            disabled={pwdSaving}
-                                        >
-                                            {pwdSaving ? "Actualizando..." : "Actualizar contraseña"}
-                                        </Button>
-                                    </div>
-                                </form>
+                        {/* --- BARRA DE COLOR --- */}
+                        <div className="px-1 pt-1">
+                            <div className="h-1.5 w-full bg-gray-200/70 dark:bg-gray-700 rounded-full overflow-hidden">
+                                <div 
+                                    className={`h-full transition-all duration-500 ${
+                                        ["bg-gray-200", "bg-red-500", "bg-orange-400", "bg-yellow-400", "bg-emerald-500"][
+                                            ((pwd.new_password?.length >= 8 ? 1 : 0) + 
+                                            (/[A-Z]/.test(pwd.new_password||"") ? 1 : 0) + 
+                                            (/[0-9]/.test(pwd.new_password||"") ? 1 : 0) + 
+                                            (/[^a-zA-Z0-9]/.test(pwd.new_password||"") ? 1 : 0))
+                                        ]
+                                    }`}
+                                    style={{ 
+                                        width: `${
+                                            ((pwd.new_password?.length >= 8 ? 1 : 0) + 
+                                            (/[A-Z]/.test(pwd.new_password||"") ? 1 : 0) + 
+                                            (/[0-9]/.test(pwd.new_password||"") ? 1 : 0) + 
+                                            (/[^a-zA-Z0-9]/.test(pwd.new_password||"") ? 1 : 0)) * 25
+                                        }%` 
+                                    }}
+                                ></div>
                             </div>
+                            <p className="text-[10px] text-red-700/60 font-medium mt-1">
+                               * Mínimo 8 caracteres, mayúscula y número.
+                            </p>
+                        </div>
+                    </div>
+
+                    {/* Input 3: Confirmar + MENSAJE DE COINCIDENCIA */}
+                    <div className="space-y-2">
+                        <Label className="text-red-900/80 dark:text-red-200 font-medium ml-1">
+                            Confirmar contraseña
+                        </Label>
+                        <div className="relative group">
+                            {!pwd.confirm_password && (
+                                <CheckCircle2 className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-red-400 pointer-events-none" />
+                            )}
+                            <Input
+                                type="password"
+                                className={`rounded-xl border-red-200 bg-white dark:bg-black/20 focus-visible:ring-red-500 focus-visible:border-red-500 transition-all ${
+                                    !pwd.confirm_password ? "pl-14" : "pl-4"
+                                }`}
+                                value={pwd.confirm_password}
+                                onChange={(e) =>
+                                    setPwd((s) => ({ ...s, confirm_password: e.target.value }))
+                                }
+                                placeholder="Repítela para confirmar"
+                                required
+                                disabled={pwdSaving}
+                            />
+                        </div>
+
+                        {/* --- MENSAJE: LAS CONTRASEÑAS COINCIDEN --- */}
+                        {pwd.confirm_password && (
+                            <div className={`px-1 pt-1 flex items-center gap-1.5 text-[11px] font-bold transition-colors ${
+                                pwd.new_password === pwd.confirm_password 
+                                ? "text-emerald-600 dark:text-emerald-400" 
+                                : "text-red-500"
+                            }`}>
+                                {pwd.new_password === pwd.confirm_password ? (
+                                    <>
+                                        <Check className="h-3 w-3" />
+                                        <span>Las contraseñas coinciden</span>
+                                    </>
+                                ) : (
+                                    <>
+                                        <X className="h-3 w-3" />
+                                        <span>Las contraseñas no coinciden</span>
+                                    </>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+                <div className="pt-2 flex justify-end">
+                    <Button
+                        className="rounded-xl bg-gradient-to-r from-red-600 to-rose-700 hover:from-red-700 hover:to-rose-800 shadow-lg shadow-red-500/20 text-white font-medium px-6 transition-all"
+                        disabled={pwdSaving}
+                    >
+                        {pwdSaving ? "Guardando..." : "Actualizar contraseña"}
+                    </Button>
+                </div>
+            </form>
+        </div>
                         )}
 
                         {/* ADMIN: picker */}
