@@ -1118,12 +1118,12 @@ const ProcedureDetailDialog = ({ open, onOpenChange, procedureId, onChanged }) =
     </Dialog>
   );
 };
-
 /* ===================== PROCEDURES ===================== */
 const ProceduresManagement = forwardRef((props, ref) => {
   const { hasPerm } = useAuth();
   const canReview = hasPerm(PERMS["mpv.processes.review"]);
 
+  // --- ESTADOS ---
   const [procedures, setProcedures] = useState([]);
   const [procedureTypes, setProcedureTypes] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -1147,6 +1147,58 @@ const ProceduresManagement = forwardRef((props, ref) => {
     urgency_level: "NORMAL",
   });
 
+  // --- VALIDACIÓN ---
+  const [errors, setErrors] = useState({});
+
+  // Componente para mostrar errores
+  const ErrorMsg = ({ msg }) => {
+    return msg ? <p className="text-red-500 text-xs mt-1 font-medium ml-1">⚠ {msg}</p> : null;
+  };
+
+  // Filtro para solo números
+  const onlyDigits = (value) => String(value).replace(/\D/g, "");
+
+  // Lógica de validación ACTUALIZADA
+  const validateForm = () => {
+    const newErrors = {};
+
+    if (!formData.procedure_type_id) newErrors.procedure_type_id = "Seleccione un tipo de trámite";
+    
+    if (!formData.applicant_name?.trim()) {
+      newErrors.applicant_name = "El nombre es obligatorio";
+    } else if (formData.applicant_name.length < 3) {
+      newErrors.applicant_name = "Mínimo 3 caracteres";
+    }
+
+    // Validación estricta DNI (8 dígitos)
+    if (!formData.applicant_document?.trim()) {
+      newErrors.applicant_document = "El documento es obligatorio";
+    } else if (formData.applicant_document.length !== 8) {
+      newErrors.applicant_document = "Debe tener exactamente 8 dígitos";
+    }
+
+    if (formData.applicant_email && !formData.applicant_email.includes("@")) {
+      newErrors.applicant_email = "Formato de correo inválido";
+    }
+
+    // Validación estricta Celular (9 dígitos)
+    if (formData.applicant_phone && formData.applicant_phone.length !== 9) {
+      newErrors.applicant_phone = "El celular debe tener 9 dígitos";
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
+  // Manejador de cambios
+  const handleFieldChange = (field, value) => {
+    setFormData({ ...formData, [field]: value });
+    if (errors[field]) {
+      setErrors((prev) => ({ ...prev, [field]: null }));
+    }
+  };
+
+  // --- HOOKS ---
   useImperativeHandle(ref, () => ({
     openCreate: () => setIsCreateModalOpen(true),
     focusSearch: () => {
@@ -1185,8 +1237,15 @@ const ProceduresManagement = forwardRef((props, ref) => {
 
   if (!canReview) return null;
 
-  const handleSubmit = async (e) => {
+  // --- HANDLERS ---
+  const onFormSubmit = (e) => {
     e.preventDefault();
+    if (validateForm()) {
+      handleSubmitData();
+    }
+  };
+
+  const handleSubmitData = async () => {
     try {
       const payload = {
         ...formData,
@@ -1207,6 +1266,7 @@ const ProceduresManagement = forwardRef((props, ref) => {
         description: "",
         urgency_level: "NORMAL",
       });
+      setErrors({});
       fetchProcedures();
     } catch (error) {
       console.log("create error:", error);
@@ -1272,18 +1332,15 @@ const ProceduresManagement = forwardRef((props, ref) => {
 
   const openDetail = async (p) => {
     let id = p?.id;
-
     if (!id && p?.tracking_code) {
       const d = await ProcSvc.getByCode(p.tracking_code);
       const procData = d?.procedure || d;
       id = procData?.id || d?.id;
     }
-
     if (!id) {
       toast.error("No se pudo obtener el ID del trámite");
       return;
     }
-
     setDetailId(id);
     setDetailOpen(true);
   };
@@ -1295,7 +1352,8 @@ const ProceduresManagement = forwardRef((props, ref) => {
       </div>
     );
   }
-
+  
+  // --- JSX RENDER ---
   return (
     <div className="space-y-6 pb-24 sm:pb-6">
 
@@ -1316,14 +1374,18 @@ const ProceduresManagement = forwardRef((props, ref) => {
               <DialogDescription>Complete los datos del trámite documentario</DialogDescription>
             </DialogHeader>
 
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <form onSubmit={onFormSubmit} className="space-y-4">
+              
+              {/* Tipo de Trámite */}
               <div>
-                <Label htmlFor="procedure_type_id">Tipo de Trámite *</Label>
+                <Label htmlFor="procedure_type_id" className={errors.procedure_type_id ? "text-red-500" : ""}>
+                    Tipo de Trámite *
+                </Label>
                 <Select
                   value={formData.procedure_type_id || undefined}
-                  onValueChange={(value) => setFormData({ ...formData, procedure_type_id: value })}
+                  onValueChange={(value) => handleFieldChange("procedure_type_id", value)}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger className={errors.procedure_type_id ? "border-red-500" : ""}>
                     <SelectValue placeholder="Seleccionar tipo de trámite" />
                   </SelectTrigger>
                   <SelectContent>
@@ -1334,46 +1396,79 @@ const ProceduresManagement = forwardRef((props, ref) => {
                     ))}
                   </SelectContent>
                 </Select>
+                <ErrorMsg msg={errors.procedure_type_id} />
               </div>
 
+              {/* Datos Personales */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label htmlFor="applicant_name">Nombre del Solicitante *</Label>
+                  <Label htmlFor="applicant_name" className={errors.applicant_name ? "text-red-500" : ""}>
+                    Nombre del Solicitante *
+                  </Label>
                   <Input
                     id="applicant_name"
                     value={formData.applicant_name}
-                    onChange={(e) => setFormData({ ...formData, applicant_name: e.target.value })}
-                    required
+                    onChange={(e) => handleFieldChange("applicant_name", e.target.value)}
+                    className={errors.applicant_name ? "border-red-500" : ""}
+                    placeholder="Nombre completo"
                   />
+                  <ErrorMsg msg={errors.applicant_name} />
                 </div>
                 <div>
-                  <Label htmlFor="applicant_document">Documento de Identidad *</Label>
+                  <Label htmlFor="applicant_document" className={errors.applicant_document ? "text-red-500" : ""}>
+                    Documento de Identidad *
+                  </Label>
+                  
+                  {/* --- INPUT CORREGIDO: Máximo 8 dígitos estricto --- */}
                   <Input
                     id="applicant_document"
                     value={formData.applicant_document}
-                    onChange={(e) => setFormData({ ...formData, applicant_document: e.target.value })}
-                    required
+                    onChange={(e) => {
+                        const val = onlyDigits(e.target.value).slice(0, 8); // Cortar a 8
+                        handleFieldChange("applicant_document", val);
+                    }}
+                    className={errors.applicant_document ? "border-red-500" : ""}
+                    placeholder="DNI "
+                    maxLength={8} 
                   />
+                  <ErrorMsg msg={errors.applicant_document} />
                 </div>
               </div>
 
+              {/* Contacto */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label htmlFor="applicant_email">Correo Electrónico</Label>
+                  <Label htmlFor="applicant_email" className={errors.applicant_email ? "text-red-500" : ""}>
+                    Correo Electrónico
+                  </Label>
                   <Input
                     id="applicant_email"
                     type="email"
                     value={formData.applicant_email}
-                    onChange={(e) => setFormData({ ...formData, applicant_email: e.target.value })}
+                    onChange={(e) => handleFieldChange("applicant_email", e.target.value)}
+                    className={errors.applicant_email ? "border-red-500" : ""}
+                    placeholder="ejemplo@correo.com"
                   />
+                  <ErrorMsg msg={errors.applicant_email} />
                 </div>
                 <div>
-                  <Label htmlFor="applicant_phone">Teléfono</Label>
+                  <Label htmlFor="applicant_phone" className={errors.applicant_phone ? "text-red-500" : ""}>
+                    Teléfono
+                  </Label>
+
+                  {/* --- INPUT CORREGIDO: Máximo 9 dígitos estricto --- */}
                   <Input
                     id="applicant_phone"
                     value={formData.applicant_phone}
-                    onChange={(e) => setFormData({ ...formData, applicant_phone: e.target.value })}
+                    onChange={(e) => {
+                        const val = onlyDigits(e.target.value).slice(0, 9); // Cortar a 9
+                        handleFieldChange("applicant_phone", val);
+                    }}
+                    className={errors.applicant_phone ? "border-red-500" : ""}
+                    maxLength={9}
+                    placeholder="Celular "
                   />
+                  <ErrorMsg msg={errors.applicant_phone} />
                 </div>
               </div>
 
@@ -1382,7 +1477,7 @@ const ProceduresManagement = forwardRef((props, ref) => {
                 <Textarea
                   id="description"
                   value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  onChange={(e) => handleFieldChange("description", e.target.value)}
                   placeholder="Describa los detalles específicos del trámite"
                 />
               </div>
@@ -1391,7 +1486,7 @@ const ProceduresManagement = forwardRef((props, ref) => {
                 <Label htmlFor="urgency_level">Nivel de Urgencia</Label>
                 <Select
                   value={formData.urgency_level}
-                  onValueChange={(value) => setFormData({ ...formData, urgency_level: value })}
+                  onValueChange={(value) => handleFieldChange("urgency_level", value)}
                 >
                   <SelectTrigger>
                     <SelectValue />
@@ -1419,38 +1514,38 @@ const ProceduresManagement = forwardRef((props, ref) => {
       </div>
 
       {/* Filters */}
-     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
-  {/* Buscador */}
-  <div className="w-full min-w-0 sm:flex-1 sm:max-w-md">
-    <div className="relative">
-      <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-4 w-4" />
-      <Input
-        placeholder="Buscar por código, nombre o tipo..."
-        value={searchTerm}
-        onChange={(e) => setSearchTerm(e.target.value)}
-        className="pl-10 w-full min-w-0"
-        ref={searchInputRef}
-      />
-    </div>
-  </div>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
+        {/* Buscador */}
+        <div className="w-full min-w-0 sm:flex-1 sm:max-w-md">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-4 w-4" />
+            <Input
+              placeholder="Buscar por código, nombre o tipo..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-10 w-full min-w-0"
+              ref={searchInputRef}
+            />
+          </div>
+        </div>
 
-  {/* Estado */}
-  <div className="w-full sm:w-48 shrink-0">
-    <Select value={statusFilter} onValueChange={setStatusFilter}>
-      <SelectTrigger className="w-full">
-        <SelectValue placeholder="Filtrar por estado" />
-      </SelectTrigger>
-      <SelectContent>
-        <SelectItem value="ALL">Todos los estados</SelectItem>
-        <SelectItem value="RECEIVED">Recibido</SelectItem>
-        <SelectItem value="IN_REVIEW">En Revisión</SelectItem>
-        <SelectItem value="APPROVED">Aprobado</SelectItem>
-        <SelectItem value="REJECTED">Rechazado</SelectItem>
-        <SelectItem value="COMPLETED">Completado</SelectItem>
-      </SelectContent>
-    </Select>
-  </div>
-</div>
+        {/* Estado */}
+        <div className="w-full sm:w-48 shrink-0">
+          <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <SelectTrigger className="w-full">
+              <SelectValue placeholder="Filtrar por estado" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ALL">Todos los estados</SelectItem>
+              <SelectItem value="RECEIVED">Recibido</SelectItem>
+              <SelectItem value="IN_REVIEW">En Revisión</SelectItem>
+              <SelectItem value="APPROVED">Aprobado</SelectItem>
+              <SelectItem value="REJECTED">Rechazado</SelectItem>
+              <SelectItem value="COMPLETED">Completado</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
 
 
       {/* List */}
